@@ -1,0 +1,13 @@
+/.venv
+/.bigvenv
+/SentEval/data/downstream/*
+/data
+/result
+/run_rankcse.slurm
+/runs
+/experiments
+/experiment0.*
+/wandb
+/notebooks
+/mydata
+/.cache
