@@ -273,11 +273,11 @@ class CLTrainer(Trainer):
         """
         # This might change the seed so needs to run first.
         self._hp_search_setup(trial)
-        import wandb
-        wandb.init(
-            # set the wandb project where this run will be logged
-            project="rankcse-log",
-        )
+        # import wandb
+        # wandb.init(
+        #     # set the wandb project where this run will be logged
+        #     project="rankcse-log",
+        # )
 
         # Model re-init
         if self.model_init is not None:
@@ -554,7 +554,7 @@ class CLTrainer(Trainer):
                 else:
                     tr_loss += self.training_step(model, inputs)
                 self._total_flos += self.floating_point_ops(inputs)
-                wandb.log({"loss": self.training_step(model, inputs)})
+                # wandb.log({"loss": self.training_step(model, inputs)})
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
@@ -647,7 +647,7 @@ class CLTrainer(Trainer):
         self.control = self.callback_handler.on_train_end(self.args, self.state, self.control)
         # add remaining tr_loss
         self._total_loss_scalar += tr_loss.item()
-        wandb.finish()
+        # wandb.finish()
         
         
 

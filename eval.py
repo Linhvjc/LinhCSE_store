@@ -219,10 +219,10 @@ class Evaluation:
 if __name__ == '__main__':
     # model_path = r'VoVanPhuc/sup-SimCSE-VietNamese-phobert-base'
     # model_path = r'VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base'
-    model_path = r'keepitreal/vietnamese-sbert'
-    # model_path = r'/home/link/spaces/rankcse/runs/rankcse_v22'
-    test_path = r'/home/link/spaces/rankcse/mydata/test/benchmark_id.csv'
-    corpus_path = r'/home/link/spaces/rankcse/mydata/test/corpus.json'
+    # model_path = r'keepitreal/vietnamese-sbert'
+    model_path = r'/home/link/spaces/LinhCSE/runs/test'
+    test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
+    corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
     
     evaluation = Evaluation(test_path=test_path,
                             model_path=model_path,

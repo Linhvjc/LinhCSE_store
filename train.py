@@ -304,19 +304,18 @@ class OurTrainingArguments(TrainingArguments):
 
         return device
 
+parser = HfArgumentParser((ModelArguments, DataTrainingArguments, OurTrainingArguments))
+if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+    # If we pass only one argument to the script and it's the path to a json file,
+    # let's parse it to get our arguments.
+    model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+else:
+    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-def main():
+def main(model_args = model_args, data_args = data_args, training_args = training_args):
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
-
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, OurTrainingArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     if (
         os.path.exists(training_args.output_dir)
@@ -649,40 +648,46 @@ def main():
 
             # Need to save the state, since Trainer.save_model saves only the tokenizer with the model
             trainer.state.save_to_json(os.path.join(training_args.output_dir, "trainer_state.json"))
-        def logging_wandb():
-            wandb.init()
-            wandb.log({   
-                    "epoch": training_args.num_train_epochs,
-                    'batch_size': training_args.per_device_train_batch_size,
-                    'learning_rate': training_args.learning_rate,
-                    'max_seq_length': data_args.max_seq_length,
-                    'distillation_loss': model_args.distillation_loss,
-                    'num_sample_train': model_args.num_sample_train,
-                    'loss': train_result.training_loss
-                })
-        logging_wandb
-        wandb.agent(sweep_id = 'rankcse_logging/pd1jktz8', function = logging_wandb, count=1)
-    # Evaluation
-    # results = {}
-    # if training_args.do_eval:
-    #     logger.info("*** Evaluate ***")
-    #     results = trainer.evaluate(eval_senteval_transfer=True)
+        # def logging_wandb():
+        #     wandb.init()
+        #     wandb.log({   
+        #             "epoch": training_args.num_train_epochs,
+        #             'batch_size': training_args.per_device_train_batch_size,
+        #             'learning_rate': training_args.learning_rate,
+        #             'max_seq_length': data_args.max_seq_length,
+        #             'distillation_loss': model_args.distillation_loss,
+        #             'num_sample_train': model_args.num_sample_train,
+        #             'loss': train_result.training_loss
+        #         })
+        # wandb.agent(sweep_id = 'rankcse_logging/pd1jktz8', function = logging_wandb, count=1)
+    return train_result.training_loss
 
-    #     output_eval_file = os.path.join(training_args.output_dir, "eval_results.txt")
-    #     if trainer.is_world_process_zero():
-    #         with open(output_eval_file, "w") as writer:
-    #             logger.info("***** Eval results *****")
-    #             for key, value in sorted(results.items()):
-    #                 logger.info(f"  {key} = {value}")
-    #                 writer.write(f"{key} = {value}\n")
-
-    # return results
-
-
-def _mp_fn(index):
-    # For xla_spawn (TPUs)
-    main()
+def hyper_search(times = 3):
+    
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, OurTrainingArguments))
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # If we pass only one argument to the script and it's the path to a json file,
+        # let's parse it to get our arguments.
+        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+    else:
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        
+    #! init hyper search
+    def train(config=None):
+        with wandb.init(config=config):
+            config = wandb.config
+        model_args.distillation_loss = config.distillation_loss
+        model_args.num_sample_train = config.num_sample_train
+        training_args.num_train_epochs = config.num_train_epochs
+        training_args.per_device_train_batch_size = config.per_device_train_batch_size
+        training_args.learning_rate = config.learning_rate
+        data_args.max_seq_length = config.max_seq_length
+        loss = main(model_args, data_args, training_args)
+        wandb.log({'loss': loss})
+    
+    wandb.agent(sweep_id = 'rankcse_logging/cupxqzdy', function=train, count=times)
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    hyper_search(times = 300)

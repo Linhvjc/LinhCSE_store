@@ -12,7 +12,7 @@ python train.py \
     --output_dir runs/test \
     --num_train_epochs 1 \
     --per_device_train_batch_size 256 \
-    --learning_rate 1e-5 \
+    --learning_rate 7e-5 \
     --max_seq_length 32 \
     --load_best_model_at_end \
     --pooler_type cls \
