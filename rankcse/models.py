@@ -292,6 +292,7 @@ def cl_forward(cls,
 
     # L = L_infoNCE + L_consistency + L_distillation
     loss = loss + sd_loss + kd_loss
+    # loss = loss + kd_loss
 
     # Calculate loss for MLM
     if mlm_outputs is not None and mlm_labels is not None:

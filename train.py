@@ -12,9 +12,11 @@ import torch
 import collections
 import random
 import wandb
+import py_vncorenlp
 
 
-from datasets import load_dataset, DatasetDict
+
+from datasets import load_dataset, DatasetDict, Dataset
 
 import transformers
 from transformers import (
@@ -45,6 +47,7 @@ from transformers.data.data_collator import DataCollatorForLanguageModeling
 from transformers.file_utils import cached_property, torch_required, is_torch_available, is_torch_tpu_available
 from rankcse.models import RobertaForCL, BertForCL
 from rankcse.trainers import CLTrainer
+from eval import Evaluation
 
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
@@ -178,7 +181,7 @@ class ModelArguments:
         }
     )
     num_sample_train: int = field(
-        default=100,
+        default= 1000,
         metadata={
             "help": "The numble of the sample that model use to training"
         }
@@ -311,11 +314,13 @@ if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
     model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
 else:
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    
 
 def main(model_args = model_args, data_args = data_args, training_args = training_args):
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
+
 
     if (
         os.path.exists(training_args.output_dir)
@@ -369,11 +374,25 @@ def main(model_args = model_args, data_args = data_args, training_args = trainin
         datasets = load_dataset(extension, data_files=data_files, cache_dir="./data/", delimiter="\t" if "tsv" in data_args.train_file else ",")
     else:
         datasets = load_dataset(extension, data_files=data_files, cache_dir="./data/")
-    # datasets= datasets.select(range(100))
     datasets = datasets['train'].select(range(model_args.num_sample_train))
     datasets = DatasetDict({
         'train': datasets
     })
+    import CONSTANTS
+    def segment(sentence):
+        output = CONSTANTS.rdrsegmenter.word_segment(sentence['text'])
+        sentence["text"]= " ".join(output)
+        return sentence
+    datasets = datasets.map(segment)
+    # def segment(sentence):
+    #     output = CONSTANTS.rdrsegmenter.word_segment(sentence)
+    #     return " ".join(output)
+    # from tqdm import tqdm
+    # my_sentences = []
+    # for sentence in tqdm(datasets['train']['text']):
+    #     my_sentences.append(segment(sentence))
+    # datasets = Dataset.from_dict({'text': my_sentences})
+    # datasets = DatasetDict({'train': datasets})
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -626,6 +645,7 @@ def main(model_args = model_args, data_args = data_args, training_args = trainin
             if (model_args.model_name_or_path is not None and os.path.isdir(model_args.model_name_or_path))
             else None
         )
+        print(f"Num sample train: {model_args.num_sample_train}")
         train_result = trainer.train(model_path=model_path)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
@@ -648,18 +668,6 @@ def main(model_args = model_args, data_args = data_args, training_args = trainin
 
             # Need to save the state, since Trainer.save_model saves only the tokenizer with the model
             trainer.state.save_to_json(os.path.join(training_args.output_dir, "trainer_state.json"))
-        # def logging_wandb():
-        #     wandb.init()
-        #     wandb.log({   
-        #             "epoch": training_args.num_train_epochs,
-        #             'batch_size': training_args.per_device_train_batch_size,
-        #             'learning_rate': training_args.learning_rate,
-        #             'max_seq_length': data_args.max_seq_length,
-        #             'distillation_loss': model_args.distillation_loss,
-        #             'num_sample_train': model_args.num_sample_train,
-        #             'loss': train_result.training_loss
-        #         })
-        # wandb.agent(sweep_id = 'rankcse_logging/pd1jktz8', function = logging_wandb, count=1)
     return train_result.training_loss
 
 def hyper_search(times = 3):
@@ -671,7 +679,6 @@ def hyper_search(times = 3):
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-        
     #! init hyper search
     def train(config=None):
         with wandb.init(config=config):
@@ -682,12 +689,42 @@ def hyper_search(times = 3):
         training_args.per_device_train_batch_size = config.per_device_train_batch_size
         training_args.learning_rate = config.learning_rate
         data_args.max_seq_length = config.max_seq_length
-        loss = main(model_args, data_args, training_args)
-        wandb.log({'loss': loss})
+        model_args.mlp_only_train = config.mlp_only_train
+        model_args.pooler_type = config.pooler_type
+        try:
+            loss = main(model_args, data_args, training_args)
+            
+            print("****** Evaluation ******")
+            
+            model_path = r'/home/link/spaces/LinhCSE/runs/test'
+            test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
+            corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
+            
+            evaluation = Evaluation(test_path=test_path,
+                                    model_path=model_path,
+                                    corpus_path=corpus_path,
+                                    batch_size= 128
+                                    )
+            result = evaluation.evaluation(k = 10)
+            wandb.log({'Recall@10': result})
+        except:
+            print('Error when computing recall')
+            raise
     
-    wandb.agent(sweep_id = 'rankcse_logging/cupxqzdy', function=train, count=times)
+    wandb.agent(sweep_id = 'rankcse_minilog/dexi056r', function=train, count=times)
 
 
 if __name__ == "__main__":
-    # main()
-    hyper_search(times = 300)
+    main()
+    # model_path = r'/home/link/spaces/LinhCSE/runs/test'
+    # test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
+    # corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
+    
+    # evaluation = Evaluation(test_path=test_path,
+    #                         model_path=model_path,
+    #                         corpus_path=corpus_path,
+    #                         batch_size= 512
+    #                         )
+    # result = evaluation.evaluation(k = 10)
+    # evaluation.export_output()
+    # hyper_search(times = 1)
