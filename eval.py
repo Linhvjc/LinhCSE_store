@@ -15,13 +15,15 @@ from torch.nn.functional import cosine_similarity
 import torch.nn as nn
 from utils.fronts import Font
 from tqdm import tqdm
-import time
+import yaml
 import py_vncorenlp
 from sentence_transformers.util import semantic_search
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:[ %(levelname)s ]:\t%(message)s ')
 font = Font()
+EVAL_PATH = '/home/link/spaces/LinhCSE/configs/eval.yml'
+
 class Evaluation:
     def __init__(self, 
                  test_path:str, 
@@ -205,7 +207,7 @@ class Evaluation:
               """))
         return recall_top_k
     
-    def export_output(self):
+    def export_output(self, path:str):
         def _mapping_sample(sample):
             result = [self.corpus[id] for id in sample]
             return result
@@ -220,21 +222,24 @@ class Evaluation:
             'predict_label':y_pred_string,
             'num_true_label': self.num_true_label
         })
-        df_output.to_csv('/home/link/spaces/LinhCSE/output.csv', index=False)
+        df_output.to_csv(path, index=False)
         logging.info(font.info_text(f"Export output.csv file Successfully"))
 
-if __name__ == '__main__':
-    # model_path = r'VoVanPhuc/sup-SimCSE-VietNamese-phobert-base'
-    # model_path = r'VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base'
-    # model_path = r'keepitreal/vietnamese-sbert'
-    model_path = r'/home/link/spaces/LinhCSE/runs/best_model_27_08'
-    test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
-    corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
-    
-    evaluation = Evaluation(test_path=test_path,
-                            model_path=model_path,
-                            corpus_path=corpus_path,
-                            batch_size= 512
+def load_config(file_path):
+    with open(file_path, "r") as file:
+        config = yaml.safe_load(file)
+    return config
+
+
+def main():
+    args = load_config(EVAL_PATH)
+    evaluation = Evaluation(test_path=args['test_path'],
+                            model_path=args['model_path'],
+                            corpus_path=args['corpus_path'],
+                            batch_size= args['batch_size']
                             )
-    result = evaluation.evaluation(k = 10)
-    evaluation.export_output()
+    evaluation.evaluation(k = args['k'])
+    if args['export_output']:
+        evaluation.export_output(path=args['output_path'])
+if __name__ == '__main__':
+    main()
