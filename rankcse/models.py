@@ -149,16 +149,16 @@ def cl_init(cls, config):
     """
     Contrastive learning class init function.
     """
-    cls.pooler_type = cls.model_args.pooler_type
-    cls.pooler = Pooler(cls.model_args.pooler_type)
-    if cls.model_args.pooler_type == "cls":
+    cls.pooler_type = cls.model_args['pooler_type']
+    cls.pooler = Pooler(cls.model_args['pooler_type'])
+    if cls.model_args['pooler_type'] == "cls":
         cls.mlp = MLPLayer(config)
-    cls.sim = Similarity(temp=cls.model_args.temp)
-    cls.div = Divergence(beta_=cls.model_args.beta_)
-    if cls.model_args.distillation_loss == "listnet":
-        cls.distillation_loss_fct = ListNet(cls.model_args.tau2, cls.model_args.gamma_)
-    elif cls.model_args.distillation_loss == "listmle":
-        cls.distillation_loss_fct = ListMLE(cls.model_args.tau2, cls.model_args.gamma_)
+    cls.sim = Similarity(temp=cls.model_args['temp'])
+    cls.div = Divergence(beta_=cls.model_args['beta_'])
+    if cls.model_args['distillation_loss'] == "listnet":
+        cls.distillation_loss_fct = ListNet(cls.model_args['tau2'], cls.model_args['gamma_'])
+    elif cls.model_args['distillation_loss'] == "listmle":
+        cls.distillation_loss_fct = ListMLE(cls.model_args['tau2'], cls.model_args['gamma_'])
     else:
         raise NotImplementedError
     cls.init_weights()
@@ -202,7 +202,7 @@ def cl_forward(cls,
         head_mask=head_mask,
         inputs_embeds=inputs_embeds,
         output_attentions=output_attentions,
-        output_hidden_states=True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
+        output_hidden_states=True if cls.model_args['pooler_type'] in ['avg_top2', 'avg_first_last'] else False,
         return_dict=True,
     )
 
@@ -217,7 +217,7 @@ def cl_forward(cls,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
-            output_hidden_states=True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
+            output_hidden_states=True if cls.model_args['pooler_type'] in ['avg_top2', 'avg_first_last'] else False,
             return_dict=True,
         )
 
@@ -273,7 +273,7 @@ def cl_forward(cls,
     # Calculate loss with hard negatives
     if num_sent == 3:
         # Note that weights are actually logits of weights
-        z3_weight = cls.model_args.hard_negative_weight
+        z3_weight = cls.model_args['hard_negative_weight']
         weights = torch.tensor(
             [[0.0] * (cos_sim.size(-1) - z1_z3_cos.size(-1)) + [0.0] * i + [z3_weight] + [0.0] * (z1_z3_cos.size(-1) - i - 1) for i in range(z1_z3_cos.size(-1))]
         ).to(cls.device)
@@ -291,7 +291,7 @@ def cl_forward(cls,
     sd_loss = cls.div(z1_z2_cos.softmax(dim=-1).clamp(min=1e-7), z2_z1_cos.softmax(dim=-1).clamp(min=1e-7))
 
     # L = L_infoNCE + L_consistency + L_distillation
-    loss = loss + sd_loss + kd_loss
+    loss = 3*loss + sd_loss + 0.5 * kd_loss
     # loss = loss + kd_loss
 
     # Calculate loss for MLM
@@ -299,7 +299,7 @@ def cl_forward(cls,
         mlm_labels = mlm_labels.view(-1, mlm_labels.size(-1))
         prediction_scores = cls.lm_head(mlm_outputs.last_hidden_state)
         masked_lm_loss = loss_fct(prediction_scores.view(-1, cls.config.vocab_size), mlm_labels.view(-1))
-        loss = loss + cls.model_args.mlm_weight * masked_lm_loss
+        loss = loss + cls.model_args['mlm_weight'] * masked_lm_loss
 
     if not return_dict:
         output = (cos_sim,) + outputs[2:]
@@ -342,7 +342,7 @@ def sentemb_forward(
     )
 
     pooler_output = cls.pooler(attention_mask, outputs)
-    if cls.pooler_type == "cls" and not cls.model_args.mlp_only_train:
+    if cls.pooler_type == "cls" and not cls.model_args['mlp_only_train']:
         pooler_output = cls.mlp(pooler_output)
 
     if not return_dict:
@@ -363,7 +363,7 @@ class BertForCL(BertPreTrainedModel):
         self.model_args = model_kargs["model_args"]
         self.bert = BertModel(config, add_pooling_layer=False)
 
-        if self.model_args.do_mlm:
+        if self.model_args['do_mlm']:
             self.lm_head = BertLMPredictionHead(config)
 
         cl_init(self, config)
@@ -424,7 +424,7 @@ class RobertaForCL(RobertaPreTrainedModel):
         self.model_args = model_kargs["model_args"]
         self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        if self.model_args.do_mlm:
+        if self.model_args['do_mlm']:
             self.lm_head = RobertaLMHead(config)
 
         cl_init(self, config)

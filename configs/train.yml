@@ -1,0 +1,50 @@
+model_args: 
+  # Modify
+  model_name_or_path: vinai/phobert-base-v2
+  first_teacher_name_or_path: VoVanPhuc/sup-SimCSE-VietNamese-phobert-base 
+  second_teacher_name_or_path: keepitreal/vietnamese-sbert 
+  distillation_loss: listmle    #[listmle, listnet]
+  tau2: 0.05 
+  alpha_: 0.33 
+  beta_: 1.0 
+  gamma_: 1.0 
+  temp: 0.05 
+  pooler_type: cls    # [cls, cls_before_pooler, avg, avg_top2, avg_first_last]
+  mlm_weight: 0.1
+  mlp_only_train: True
+  
+  #Default
+  model_type: null
+  config_name: null
+  tokenizer_name: null
+  cache_dir: null
+  use_fast_tokenizer: True
+  model_revision: main
+  use_auth_token: False
+  hard_negative_weight: 0
+  do_mlm: False
+
+data_args:
+  # Modify  
+  num_sample_train: 100
+  max_seq_length: 32
+  train_file: data/train.txt
+  #Default
+  dataset_name: null
+  dataset_config_name: null
+  overwrite_cache: False
+  validation_split_percentage: 5
+  preprocessing_num_workers: null
+  pad_to_max_length: False
+  mlm_probability: 0.15
+
+training_args:
+  # Modify
+  output_dir: /home/link/spaces/LinhCSE/runs/my_test
+  num_train_epochs: 9 
+  per_device_train_batch_size: 128 
+  learning_rate: 5e-5 
+  load_best_model_at_end: True
+  overwrite_output_dir: True
+  do_train: True 
+  fp16: True

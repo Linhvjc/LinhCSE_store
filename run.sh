@@ -9,7 +9,7 @@
 python train.py \
     --model_name_or_path vinai/phobert-base-v2 \
     --train_file data/train.txt \
-    --output_dir /home/link/spaces/LinhCSE/runs/test \
+    --output_dir /home/link/spaces/LinhCSE/runs/best_model_27_08 \
     --num_train_epochs 9 \
     --per_device_train_batch_size 128 \
     --learning_rate 5e-5 \
@@ -24,7 +24,7 @@ python train.py \
     --first_teacher_name_or_path VoVanPhuc/sup-SimCSE-VietNamese-phobert-base \
     --second_teacher_name_or_path keepitreal/vietnamese-sbert \
     --distillation_loss listmle \
-    --alpha_ 0.67 \
+    --alpha_ 0.33 \
     --beta_ 1.0 \
     --gamma_ 1.0 \
     --tau2 0.05 \

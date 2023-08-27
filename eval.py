@@ -227,7 +227,7 @@ if __name__ == '__main__':
     # model_path = r'VoVanPhuc/sup-SimCSE-VietNamese-phobert-base'
     # model_path = r'VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base'
     # model_path = r'keepitreal/vietnamese-sbert'
-    model_path = r'/home/link/spaces/LinhCSE/runs/best_24_08'
+    model_path = r'/home/link/spaces/LinhCSE/runs/best_model_27_08'
     test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
     corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
     
