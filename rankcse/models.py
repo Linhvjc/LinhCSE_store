@@ -291,7 +291,7 @@ def cl_forward(cls,
     sd_loss = cls.div(z1_z2_cos.softmax(dim=-1).clamp(min=1e-7), z2_z1_cos.softmax(dim=-1).clamp(min=1e-7))
 
     # L = L_infoNCE + L_consistency + L_distillation
-    loss = 3*loss + sd_loss + 0.5 * kd_loss
+    loss = loss + sd_loss + kd_loss
     # loss = loss + kd_loss
 
     # Calculate loss for MLM

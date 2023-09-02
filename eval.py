@@ -1,6 +1,4 @@
 # System libraries
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 
 # Installed libraries
@@ -126,17 +124,19 @@ class Evaluation:
             test_path = self.test_path
         if not batch_size: 
             batch_size = self.batch_size
-        
+        from pyvi import ViTokenizer
         queries_id = self.df[self.df_columns_name[0]].tolist()
         queries_text = [self.corpus[id] for id in queries_id]
-        queries_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(query)) for query in queries_text]
+        # queries_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(query)) for query in queries_text]
+        queries_text = [ViTokenizer.tokenize(query) for query in queries_text]
         
         logging.info(f"{font.underline_text('Embedding query')}")
         encoded_queries = self._embedding(batch_size=batch_size, sentences=queries_text)
         logging.info(f"Encoded_queries size: {encoded_queries.shape}")
         
         corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
-        corpus_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(c)) for c in corpus_text]
+        # corpus_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(c)) for c in corpus_text]
+        corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
         corpus_id = np.array(list(self.corpus.keys())).flatten()
         
         logging.info(f"{font.underline_text('Embedding corpus')}")

@@ -1,11 +1,11 @@
 model_args: 
   # Modify
-  model_name_or_path: vinai/phobert-base-v2
-  first_teacher_name_or_path: VoVanPhuc/sup-SimCSE-VietNamese-phobert-base 
+  model_name_or_path: vinai/phobert-base
+  first_teacher_name_or_path: VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base 
   second_teacher_name_or_path: keepitreal/vietnamese-sbert 
   distillation_loss: listmle    #[listmle, listnet]
   tau2: 0.05 
-  alpha_: 0.33 
+  alpha_: 0.5 
   beta_: 1.0 
   gamma_: 1.0 
   temp: 0.05 
@@ -26,8 +26,8 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 100
-  max_seq_length: 32
+  num_sample_train: 300000
+  max_seq_length: 64
   train_file: data/train.txt
   #Default
   dataset_name: null
@@ -40,7 +40,7 @@ data_args:
 
 training_args:
   # Modify
-  output_dir: /home/link/spaces/LinhCSE/runs/my_test
+  output_dir: /home/link/spaces/LinhCSE/runs/mytest
   num_train_epochs: 9 
   per_device_train_batch_size: 128 
   learning_rate: 5e-5 
