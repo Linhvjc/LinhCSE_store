@@ -1,7 +1,7 @@
 test_path: /home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv
-model_path: /home/link/spaces/LinhCSE/runs/mytest 
+model_path: /home/link/spaces/LinhCSE/runs/mytest
 corpus_path: /home/link/spaces/LinhCSE/mydata/test/corpus.json
 batch_size: 128
 k: 20
 export_output: True
-output_path : /home/link/spaces/LinhCSE/output.csv
+output_path : /home/link/spaces/LinhCSE/output

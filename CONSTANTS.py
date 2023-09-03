@@ -5,6 +5,10 @@ from pyvi import ViTokenizer
 train_config = '/home/link/spaces/LinhCSE/configs/train.yml'
 eval_config = '/home/link/spaces/LinhCSE/configs/eval.yml'
 
+test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
+corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
+output_path = r'/home/link/spaces/LinhCSE/output'
+
 def load_config(file_path):
     with open(file_path, "r") as file:
         config = yaml.safe_load(file)

@@ -1,7 +1,7 @@
 model_args: 
   # Modify
   model_name_or_path: vinai/phobert-base
-  first_teacher_name_or_path: VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base 
+  first_teacher_name_or_path: VoVanPhuc/sup-SimCSE-VietNamese-phobert-base 
   second_teacher_name_or_path: keepitreal/vietnamese-sbert 
   distillation_loss: listmle    #[listmle, listnet]
   tau2: 0.05 
@@ -26,7 +26,7 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 300000
+  num_sample_train: 400000
   max_seq_length: 64
   train_file: data/train.txt
   #Default
@@ -40,11 +40,24 @@ data_args:
 
 training_args:
   # Modify
-  output_dir: /home/link/spaces/LinhCSE/runs/mytest
-  num_train_epochs: 9 
+  output_dir: /home/link/spaces/LinhCSE/runs/fine_tuning
+  num_train_epochs: 7 
   per_device_train_batch_size: 128 
   learning_rate: 5e-5 
   load_best_model_at_end: True
   overwrite_output_dir: True
   do_train: True 
   fp16: True
+
+wandb_args:
+  project: rankcse
+
+  # Training only
+  only_train: True
+  model_registry: model-registry/fine-tuning
+
+  # Hyper parameter search
+  hyper_search: True
+  sweep_id: abc
+  times: 30
+

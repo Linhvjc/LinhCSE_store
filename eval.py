@@ -1,9 +1,9 @@
 # System libraries
 import torch
+import os
 
 # Installed libraries
 from transformers import pipeline, AutoModel, PhobertTokenizer, AutoTokenizer
-import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -16,47 +16,45 @@ from tqdm import tqdm
 import yaml
 import py_vncorenlp
 from sentence_transformers.util import semantic_search
+from CONSTANTS import load_config, eval_config
+from typing import Optional
 
 
+import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:[ %(levelname)s ]:\t%(message)s ')
 font = Font()
-EVAL_PATH = '/home/link/spaces/LinhCSE/configs/eval.yml'
 
 class Evaluation:
-    def __init__(self, 
-                 test_path:str, 
-                 model_path:str, 
-                 corpus_path: dict, 
-                 batch_size: int = 64, 
+    def __init__(self,
+                 args = load_config(eval_config),
                  df_columns_name:list = ["Query", "Result"]) -> None:
+        self.args = args
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = AutoModel.from_pretrained(model_path).to(self.device) 
+        self.model = AutoModel.from_pretrained(self.args['model_path']).to(self.device) 
         self.model.eval()
-        self.test_path = test_path
-        self.batch_size = batch_size
-        self.df = pd.read_csv(test_path)
+        self.df = pd.read_csv(self.args['test_path'])
         self.df_columns_name = df_columns_name
         self.y_pred = None
         self.y_true = None
         self.num_true_label = None
-        if 'phobert' in model_path:
-            self.tokenizer = PhobertTokenizer.from_pretrained(model_path) 
+        if 'phobert' in self.args['model_path']:
+            self.tokenizer = PhobertTokenizer.from_pretrained(self.args['model_path']) 
         else:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.args['model_path'])
             logging.warning(font.warning_text('You choose another model that is not "phobert". Its may cause the problem of tokenizer'))
-        with open(corpus_path) as user_file:
+        with open(self.args['corpus_path']) as user_file:
             self.corpus = eval(user_file.read())
         
         print(font.inline_text('-'))
         logging.warning(font.warning_text('Please check your parameter'))
-        logging.info(font.info_text(f"Test path: {test_path}"))
-        logging.info(font.info_text(f"Model path (or name): {model_path}"))
-        logging.info(font.info_text(f"Corpus path: {corpus_path}"))
-        logging.info(font.info_text(f"Batch size: {batch_size}"))
+        logging.info(font.info_text(f"Test path: {self.args['test_path']}"))
+        logging.info(font.info_text(f"Model path (or name): {self.args['model_path']}"))
+        logging.info(font.info_text(f"Corpus path: {self.args['corpus_path']}"))
+        logging.info(font.info_text(f"Batch size: {self.args['batch_size']}"))
         logging.info(font.info_text(f"Df columns name: {df_columns_name}"))
         print(font.inline_text('-'))
     
-    def _embedding(self, batch_size:int, sentences:list):
+    def _embedding(self, batch_size:int, sentences:list) -> torch.Tensor: 
         """
         Sentences embedding
         
@@ -64,7 +62,7 @@ class Evaluation:
             batch_size: A number of samples in a batch
             sentences: A list of sentences to embedding
         
-        Returns:
+        Return:
             A list of sentences embedded
         """
         batch_size = batch_size if batch_size < len(sentences) else len(sentences)
@@ -79,7 +77,6 @@ class Evaluation:
                 encoded_batch = encoded_batch.last_hidden_state.mean(dim=1).squeeze()
                 encoded_batch = torch.reshape(encoded_batch, (encoded_batch.shape[0],-1)) \
                 if len(batch) !=1 else (torch.reshape(encoded_batch, (1,-1)))
-                
                 encoded_sentences = torch.cat((encoded_sentences, encoded_batch), dim = 0)   #replace with vstack or hstack
         return encoded_sentences
                 
@@ -107,7 +104,7 @@ class Evaluation:
         self.num_true_label = num_true_label
         return mean(result)
     
-    def _inference(self, k:int, test_path:str = None, batch_size:int = None) -> list:
+    def _inference(self, k:int, test_path:Optional[str] = None, batch_size:Optional[int] = None) -> list:
         """
         Makes the prediction
         
@@ -132,9 +129,9 @@ class Evaluation:
         
         logging.info(f"{font.underline_text('Embedding query')}")
         encoded_queries = self._embedding(batch_size=batch_size, sentences=queries_text)
-        logging.info(f"Encoded_queries size: {encoded_queries.shape}")
         
         corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
+        logging.info(f"Encoded_queries size: {encoded_queries.shape}")
         # corpus_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(c)) for c in corpus_text]
         corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
         corpus_id = np.array(list(self.corpus.keys())).flatten()
@@ -175,7 +172,7 @@ class Evaluation:
         
         return predict
         
-    def evaluation(self, k:int, test_path:str = None, batch_size:int = None) -> float:
+    def evaluation(self, k:Optional[int] = None, test_path:Optional[str] = None, batch_size:Optional[int] = None) -> float:
         """
         Makes the Evaluation
         
@@ -188,8 +185,9 @@ class Evaluation:
             The evaluation of samples by top k
         """
         logging.info(f"{font.bool_text('Evaluation')}")
-        if not test_path: test_path = self.test_path
-        if not batch_size: batch_size = self.batch_size
+        if not test_path: test_path = self.args['test_path']
+        if not batch_size: batch_size = self.args['batch_size']
+        if not k: k = self.args['k']
         
         y_pred = self._inference(k = k, test_path=test_path, batch_size = batch_size)
         
@@ -205,9 +203,17 @@ class Evaluation:
               |                             Recall@{k}: {recall_top_k}                |
               =========================================================================
               """))
+        
+        self._export_output(k=k)
         return recall_top_k
     
-    def export_output(self, path:str):
+    def _export_output(self, path:Optional[str]=None, k:Optional[int] = None):
+        """
+        Export output of benchmark
+        """
+        if not path: path = self.args['output_path']
+        if not k: k = self.args['k']
+        output_csv_path = os.path.join(path, f"output_recall_{k}.txt")
         def _mapping_sample(sample):
             result = [self.corpus[id] for id in sample]
             return result
@@ -222,24 +228,12 @@ class Evaluation:
             'predict_label':y_pred_string,
             'num_true_label': self.num_true_label
         })
-        df_output.to_csv(path, index=False)
-        logging.info(font.info_text(f"Export output.csv file Successfully"))
-
-def load_config(file_path):
-    with open(file_path, "r") as file:
-        config = yaml.safe_load(file)
-    return config
-
+        df_output.to_csv(output_csv_path, index=False)
+        logging.info(font.info_text(f"Export output_recall_{k}.txt file Successfully"))
 
 def main():
-    args = load_config(EVAL_PATH)
-    evaluation = Evaluation(test_path=args['test_path'],
-                            model_path=args['model_path'],
-                            corpus_path=args['corpus_path'],
-                            batch_size= args['batch_size']
-                            )
-    evaluation.evaluation(k = args['k'])
-    if args['export_output']:
-        evaluation.export_output(path=args['output_path'])
+    evaluation = Evaluation()
+    evaluation.evaluation()
+
 if __name__ == '__main__':
     main()
