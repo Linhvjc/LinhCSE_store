@@ -402,7 +402,8 @@ class Train:
             data_args:  Data arguments
         
         Return:
-            The average loss from training process
+            The average loss from training process and
+            The model
         """
         if not (model_args and data_args and training_args):
             model_args = self.model_args
@@ -480,7 +481,7 @@ class Train:
                         model_args=model_args,
                         data_args=data_args
                         )
-        return train_result.training_loss
+        return train_result.training_loss, model
 
     def training_with_wandb(self):
         """
@@ -495,15 +496,18 @@ class Train:
             shutil.rmtree(output_path)
         os.makedirs(output_path)
         
-        loss = self.training()
+        loss, model = self.training()
         eval_args = load_config(eval_config)
         eval_args['model_path'] = self.training_args.output_dir
         evaluation = Evaluation(args=eval_args)
         top_5 = evaluation.evaluation(k=5)
         top_10 = evaluation.evaluation(k=10)
         top_20 = evaluation.evaluation(k=20)
-        with wandb.init(project="rankcse", name = 'fine-tuning') as run:
-            run.log({
+
+        run = wandb.init(project="rankcse", name = 'fine-tuning')
+        wandb.watch(model, log=None)
+        
+        run.log({
                 "model_name_or_path": self.model_args["model_name_or_path"],
                 "first_teacher_name_or_path": self.model_args["first_teacher_name_or_path"],
                 "second_teacher_name_or_path": self.model_args["second_teacher_name_or_path"],
@@ -530,12 +534,12 @@ class Train:
                 "recall@10": top_10,
                 "recall@20": top_20,
             })
-            new_model = wandb.Artifact(f"model_{run.id}", type='model')
-            new_model.add_dir(output_path)
-            run.log_artifact(new_model)
-            run.link_artifact(new_model, self.wandb_args['model_registry'], aliases='')
-            run.finish()
-            logging.info(font.info_text(f"Save model registry to wandb successfully"))
+        new_model = wandb.Artifact(f"model_{run.id}", type='model')
+        new_model.add_dir(self.training_args.output_dir, name=f"model_{run.id}")
+        run.log_artifact(new_model)
+        run.link_artifact(new_model, self.wandb_args['model_registry'], aliases='')
+        run.finish()
+        logging.info(font.info_text(f"Save model registry to wandb successfully"))
 
 if __name__ == "__main__":
     train = Train()
