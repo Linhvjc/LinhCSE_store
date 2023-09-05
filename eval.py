@@ -1,20 +1,12 @@
-# System libraries
-import torch
 import os
 
-# Installed libraries
-from transformers import pipeline, AutoModel, PhobertTokenizer, AutoTokenizer
-import matplotlib.pyplot as plt
+import torch
+from transformers import AutoModel, PhobertTokenizer, AutoTokenizer
 import pandas as pd
 import numpy as np
-# from sklearn.metrics.pairwise import cosine_similarity
 from statistics import mean
-from torch.nn.functional import cosine_similarity
-import torch.nn as nn
 from utils.fronts import Font
 from tqdm import tqdm
-import yaml
-import py_vncorenlp
 from sentence_transformers.util import semantic_search
 from CONSTANTS import load_config, eval_config
 from typing import Optional
@@ -217,13 +209,10 @@ class Evaluation:
         if not path: path = self.args['output_path']
         if not k: k = self.args['k']
         output_csv_path = os.path.join(path, f"output_recall_{k}.txt")
-        def _mapping_sample(sample):
-            result = [self.corpus[id] for id in sample]
-            return result
         
         queries = [self.corpus[id] for id in self.df[self.df_columns_name[0]]]
-        y_true_string = [_mapping_sample(sample) for sample in self.y_true]
-        y_pred_string = [_mapping_sample(sample) for sample in self.y_pred]
+        y_true_string = [[self.corpus[id] for id in sample] for sample in self.y_true]
+        y_pred_string = [[self.corpus[id] for id in sample] for sample in self.y_pred]
         
         df_output = pd.DataFrame({
             'query': queries,

@@ -1,13 +1,13 @@
 # import py_vncorenlp
 import yaml
 from pyvi import ViTokenizer
-# rdrsegmenter = py_vncorenlp.VnCoreNLP(annotators=["wseg"], save_dir='/home/link/spaces/LinhCSE/assets/vncorenlp')
-train_config = '/home/link/spaces/LinhCSE/configs/train.yml'
-eval_config = '/home/link/spaces/LinhCSE/configs/eval.yml'
 
-test_path = r'/home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv'
-corpus_path = r'/home/link/spaces/LinhCSE/mydata/test/corpus.json'
-output_path = r'/home/link/spaces/LinhCSE/output'
+train_config = './configs/train.yml'
+eval_config = './configs/eval.yml'
+
+test_path = r'./mydata/test/benchmark_id.csv'
+corpus_path = r'./mydata/test/corpus.json'
+output_path = r'./output'
 
 def load_config(file_path):
     with open(file_path, "r") as file:

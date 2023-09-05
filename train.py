@@ -3,55 +3,31 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import logging
-import math
-import sys
+import torch
+import wandb
+import shutil
 from dataclasses import dataclass, field
 from typing import Optional, Union, List, Dict, Tuple
-import torch
-import collections
-import random
-import wandb
-import py_vncorenlp
-import yaml
-import shutil
-
-
-
-from datasets import load_dataset, DatasetDict, Dataset
-
-import transformers
+from datasets import load_dataset, DatasetDict
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
-    AutoModelForMaskedLM,
-    AutoModelForSequenceClassification,
     AutoTokenizer,
-    RobertaTokenizer,
-    DataCollatorForLanguageModeling,
-    DataCollatorWithPadding,
-    HfArgumentParser,
-    Trainer,
     TrainingArguments,
     default_data_collator,
     set_seed,
-    EvalPrediction,
-    BertModel,
     BertForPreTraining,
-    RobertaModel,
-    BertTokenizer,
     PhobertTokenizer
 )
-from transformers.tokenization_utils_base import BatchEncoding, PaddingStrategy, PreTrainedTokenizerBase
-from transformers.trainer_utils import is_main_process
-from transformers.data.data_collator import DataCollatorForLanguageModeling
-from transformers.file_utils import cached_property, torch_required, is_torch_available, is_torch_tpu_available
+from transformers.tokenization_utils_base import PaddingStrategy, PreTrainedTokenizerBase
+
+
 from rankcse.models import RobertaForCL, BertForCL
 from rankcse.trainers import CLTrainer
 from eval import Evaluation
 from CONSTANTS import load_config, train_config, eval_config, segment_pyvi, output_path
 from utils.fronts import Font
-import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:[ %(levelname)s ]:\t%(message)s ')
 font = Font()
@@ -501,9 +477,9 @@ class Train:
         eval_args = load_config(eval_config)
         eval_args['model_path'] = self.training_args.output_dir
         evaluation = Evaluation(args=eval_args)
-        top_5 = evaluation.evaluation(k=5)
-        top_10 = evaluation.evaluation(k=10)
-        top_20 = evaluation.evaluation(k=20)
+        eval_result = {}
+        for k in set(self.wandb_args['log_k']):
+            eval_result[f"recall@{k}"] = evaluation.evaluation(k=k)
 
         run = wandb.init(
             project= self.wandb_args['project'], 
@@ -535,9 +511,7 @@ class Train:
                 "learning_rate": self.training_args.learning_rate,
                 "fp16": self.training_args.fp16,
                 "loss": loss,
-                "recall@5": top_5,
-                "recall@10": top_10,
-                "recall@20": top_20,
+                **eval_result
             }
         
         new_model = wandb.Artifact(name = f"model_{run.id}", 
