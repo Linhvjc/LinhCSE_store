@@ -44,6 +44,8 @@ class Evaluation:
             logging.warning(font.warning_text('You choose another model that is not "phobert". Its may cause the problem of tokenizer'))
         with open(self.args['corpus_path']) as user_file:
             self.corpus = eval(user_file.read())
+        self.encoded_queries = None
+        self.encoded_corpus = None
         
         print(font.inline_text('-'))
         logging.warning(font.warning_text('Please check your parameter'))
@@ -122,28 +124,29 @@ class Evaluation:
         if not batch_size: 
             batch_size = self.batch_size
         from pyvi import ViTokenizer
-        queries_id = self.df[self.df_columns_name[0]].tolist()
-        queries_text = [self.corpus[id] for id in queries_id]
-        # queries_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(query)) for query in queries_text]
-        queries_text = [ViTokenizer.tokenize(query) for query in queries_text]
+        if self.encoded_queries is None:
+            queries_id = self.df[self.df_columns_name[0]].tolist()
+            queries_text = [self.corpus[id] for id in queries_id]
+            queries_text = [ViTokenizer.tokenize(query) for query in queries_text]
+            
+            logging.info(f"{font.underline_text('Embedding query')}")
+            self.encoded_queries = self._embedding(batch_size=batch_size, sentences=queries_text)
+        logging.info(f"Encoded_queries size: {self.encoded_queries.shape}")
         
-        logging.info(f"{font.underline_text('Embedding query')}")
-        encoded_queries = self._embedding(batch_size=batch_size, sentences=queries_text)
         
-        corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
-        logging.info(f"Encoded_queries size: {encoded_queries.shape}")
-        # corpus_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(c)) for c in corpus_text]
-        corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
         corpus_id = np.array(list(self.corpus.keys())).flatten()
-        
-        logging.info(f"{font.underline_text('Embedding corpus')}")
-        encoded_corpus = self._embedding(batch_size=batch_size, sentences=corpus_text)
-        logging.info(f"Encoded_corpus size: {encoded_corpus.shape}")
+        if self.encoded_corpus is None:
+            corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
+            # corpus_text = [" ".join(CONSTANTS.rdrsegmenter.word_segment(c)) for c in corpus_text]
+            corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
+            logging.info(f"{font.underline_text('Embedding corpus')}")
+            self.encoded_corpus = self._embedding(batch_size=batch_size, sentences=corpus_text)
+        logging.info(f"Encoded_corpus size: {self.encoded_corpus.shape}")
         
         logging.info(f"{font.underline_text('Calculate consine similarity')}")
         
-        queries_batchs = np.array_split(encoded_queries.cpu(), batch_size, axis=0)
-        corpus_batchs = np.array_split(encoded_corpus.cpu(), batch_size, axis=0)
+        queries_batchs = np.array_split(self.encoded_queries.cpu(), batch_size, axis=0)
+        corpus_batchs = np.array_split(self.encoded_corpus.cpu(), batch_size, axis=0)
         corpus_batchs = [corpus_batch.to(self.device) for corpus_batch in corpus_batchs]
         
         queries_batchs = [query_batch.unsqueeze(1) for query_batch in queries_batchs]
@@ -161,10 +164,10 @@ class Evaluation:
         # indices = np.argsort(-np.array(result.cpu()), axis=1)[:, 1:k+1]
         # predict = corpus_id[indices].tolist()
         
-        predict = semantic_search(query_embeddings = encoded_queries,
-                                  corpus_embeddings  = encoded_corpus,
+        predict = semantic_search(query_embeddings = self.encoded_queries,
+                                  corpus_embeddings  = self.encoded_corpus,
                                   query_chunk_size = 100,
-                                  corpus_chunk_size = encoded_corpus.shape[0],
+                                  corpus_chunk_size = self.encoded_corpus.shape[0],
                                   top_k = k+1)
         predict = [[corpus_id[item['corpus_id']] for item in sample] for sample in predict]
             

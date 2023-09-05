@@ -484,6 +484,7 @@ class Train:
         return train_result.training_loss, model
 
     def training_with_wandb(self):
+        print('************',self.wandb_args['project'])
         """
         Training model and then log hyperparameter to wandb
         Args:
@@ -504,10 +505,14 @@ class Train:
         top_10 = evaluation.evaluation(k=10)
         top_20 = evaluation.evaluation(k=20)
 
-        run = wandb.init(project="rankcse", name = 'fine-tuning')
+        run = wandb.init(
+            project= self.wandb_args['project'], 
+            group = "research",
+            entity = "simcse",
+            name = 'fine-tuning-test')
         wandb.watch(model, log=None)
         
-        run.log({
+        metadata = {
                 "model_name_or_path": self.model_args["model_name_or_path"],
                 "first_teacher_name_or_path": self.model_args["first_teacher_name_or_path"],
                 "second_teacher_name_or_path": self.model_args["second_teacher_name_or_path"],
@@ -533,10 +538,16 @@ class Train:
                 "recall@5": top_5,
                 "recall@10": top_10,
                 "recall@20": top_20,
-            })
-        new_model = wandb.Artifact(f"model_{run.id}", type='model')
+            }
+        
+        new_model = wandb.Artifact(name = f"model_{run.id}", 
+                                   type='model',
+                                   description=self.wandb_args['description'],
+                                   metadata=metadata)
         new_model.add_dir(self.training_args.output_dir, name=f"model_{run.id}")
-        run.log_artifact(new_model)
+        run.log_artifact(artifact_or_path = new_model,
+                         name = 'linh',
+                         type = 'model')
         run.link_artifact(new_model, self.wandb_args['model_registry'], aliases='')
         run.finish()
         logging.info(font.info_text(f"Save model registry to wandb successfully"))

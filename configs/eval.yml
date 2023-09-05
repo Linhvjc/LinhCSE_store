@@ -1,5 +1,5 @@
 test_path: /home/link/spaces/LinhCSE/mydata/test/benchmark_id.csv
-model_path: /home/link/spaces/LinhCSE/runs/mytest
+model_path: /home/link/spaces/LinhCSE/runs/best
 corpus_path: /home/link/spaces/LinhCSE/mydata/test/corpus.json
 batch_size: 128
 k: 20
