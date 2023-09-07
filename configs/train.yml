@@ -1,6 +1,6 @@
 model_args: 
   # Modify
-  model_name_or_path: vinai/phobert-base
+  model_name_or_path: VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base
   first_teacher_name_or_path: VoVanPhuc/sup-SimCSE-VietNamese-phobert-base 
   second_teacher_name_or_path: keepitreal/vietnamese-sbert 
   distillation_loss: listmle    #[listmle, listnet]
@@ -26,7 +26,7 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 100
+  num_sample_train: 300000
   max_seq_length: 64
   train_file: ./data/train.txt
   #Default

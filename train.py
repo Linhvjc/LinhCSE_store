@@ -403,15 +403,15 @@ class Train:
             The model
         """
         not_init_arg = not (model_args and data_args and training_args)
-        output_exist_and_not_empty = os.path.exists(training_args.output_dir) \
-                                    and os.listdir(training_args.output_dir) \
-                                    and training_args.do_train \
-                                    and not training_args.overwrite_output_dir
         if not_init_arg:
             model_args = self.model_args
             data_args = self.data_args
             training_args = self.training_args
 
+        output_exist_and_not_empty = os.path.exists(training_args.output_dir) \
+                                    and os.listdir(training_args.output_dir) \
+                                    and training_args.do_train \
+                                    and not training_args.overwrite_output_dir
         if output_exist_and_not_empty:
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty."

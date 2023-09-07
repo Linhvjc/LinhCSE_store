@@ -1,8 +1,8 @@
 import wandb
-from train import Train
+from LinhCSE.train_2 import Train
 from eval import Evaluation
-from LinhCSE.constants import test_path, corpus_path
-
+from CONSTANTS import test_path, corpus_path
+from typing import Optional, Union
 
 class HyperparameterSearch(Train):
     def __init__(self, sweep_id: str) -> None:
@@ -11,7 +11,7 @@ class HyperparameterSearch(Train):
         """
         super().__init__()
         self.sweep_id = sweep_id
-
+        
     def _search(self, config=None):
         """
         Initial a new run for hyper search 
@@ -27,36 +27,34 @@ class HyperparameterSearch(Train):
         self.model_args['mlp_only_train'] = config.mlp_only_train
         self.model_args['pooler_type'] = config.pooler_type
         try:
-            loss = self.training(
-                self.model_args, self.data_args, self.training_args)
-
+            loss = self.training(self.model_args, self.data_args, self.training_args)
+            
             print("****** Evaluation ******")
-
+            
             model_path = self.training_args.output_dir
-
+            
             evaluation = Evaluation(test_path=test_path,
                                     model_path=model_path,
                                     corpus_path=corpus_path,
-                                    batch_size=self.training_args.per_device_train_batch_size
+                                    batch_size= 128
                                     )
-            result = evaluation.evaluation(k=10)
+            result = evaluation.evaluation(k = 10)
             wandb.log({'Recall@10': result})
         except:
             print('Error when computing recall')
             raise
-
-    def start_search(self, times=10) -> None:
+    
+    def start_search(self, times = 10) -> None:
         """
         Start new hyperparameter search times
         Args:
             times: The number of the searches
-
+            
         Return: 
             None
         """
-        wandb.agent(sweep_id=self.sweep_id, function=self._search, count=times)
-
-
+        wandb.agent(sweep_id = self.sweep_id, function=self._search, count=times)
+        
 if __name__ == '__main__':
     hyperparameter_search = HyperparameterSearch('rankcse_minilog/dexi056r')
     hyperparameter_search.start_search(30)

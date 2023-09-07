@@ -1,5 +1,5 @@
 test_path: ./mydata/test/benchmark_id.csv
-model_path: ./runs/best
+model_path: ./runs/best_abc
 corpus_path: ./mydata/test/corpus.json
 batch_size: 128
 k: 20
