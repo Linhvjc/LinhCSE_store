@@ -1,7 +1,0 @@
-test_path: ./mydata/test/benchmark_id.csv
-model_path: ./runs/best_abc
-corpus_path: ./mydata/test/corpus.json
-batch_size: 128
-k: 20
-export_output: True
-output_path : ./output
