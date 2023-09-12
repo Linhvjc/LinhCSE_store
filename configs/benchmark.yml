@@ -1,0 +1,5 @@
+raw: /home/link/spaces/LinhCSE/data/edu/process/edu_v3/benchmark.txt
+model_path: /home/link/spaces/LinhCSE/runs/best
+k: 5
+thredsold: 0.95
+output_path: /home/link/spaces/LinhCSE/data/edu/final/test/benchmark.csv

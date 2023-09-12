@@ -177,6 +177,7 @@ class Train:
         datasets = DatasetDict({
             'train': datasets
         })
+        datasets = datasets.map(lambda sample : {'text': sample['text'].lower()})
         datasets = datasets.map(segment_pyvi)
         return datasets
 

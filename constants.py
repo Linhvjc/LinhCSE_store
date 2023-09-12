@@ -4,6 +4,7 @@ from pyvi import ViTokenizer
 
 train_config = './configs/train.yml'
 eval_config = './configs/eval.yml'
+benchmark_config = './configs/benchmark.yml'
 
 test_path = r'./mydata/test/benchmark_id.csv'
 corpus_path = r'./mydata/test/corpus.json'

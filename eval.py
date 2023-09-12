@@ -22,7 +22,8 @@ font = Font()
 class Evaluation:
     def __init__(self,
                  args: Optional[dict] = None,
-                 df_columns_name: Optional[list] = None) -> None:
+                 df_columns_name: Optional[list] = None,
+                 tokenizer = None) -> None:
         self.args = args or load_config(eval_config)
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,7 +37,9 @@ class Evaluation:
         self.y_true = None
         self.num_true_label = None
         
-        if 'phobert' in self.args['model_path']:
+        if tokenizer:
+            self.tokenizer = tokenizer
+        elif 'phobert' in self.args['model_path']:
             self.tokenizer = PhobertTokenizer.from_pretrained(
                 self.args['model_path'])
         else:
@@ -133,7 +136,7 @@ class Evaluation:
         if self.encoded_queries is None:
             queries_id = self.df[self.df_columns_name[0]].tolist()
             queries_text = [self.corpus[id] for id in queries_id]
-            queries_text = [ViTokenizer.tokenize(query) for query in queries_text]
+            queries_text = [ViTokenizer.tokenize(query.lower()) for query in queries_text]
 
             logging.info(f"{font.underline_text('Embedding query')}")
             self.encoded_queries = self._embedding(batch_size=batch_size, 
@@ -143,7 +146,7 @@ class Evaluation:
         corpus_id = np.array(list(self.corpus.keys())).flatten()
         if self.encoded_corpus is None:
             corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
-            corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
+            corpus_text = [ViTokenizer.tokenize(c.lower()) for c in corpus_text]
             logging.info(f"{font.underline_text('Embedding corpus')}")
             self.encoded_corpus = self._embedding(batch_size=batch_size, 
                                                   sentences=corpus_text)
@@ -151,13 +154,13 @@ class Evaluation:
 
         logging.info(f"{font.underline_text('Calculate consine similarity')}")
 
-        queries_batchs = np.array_split(self.encoded_queries.cpu(), batch_size, axis=0)
-        corpus_batchs = np.array_split(self.encoded_corpus.cpu(), batch_size, axis=0)
-        corpus_batchs = [corpus_batch.to(self.device)
-                         for corpus_batch in corpus_batchs]
+        # queries_batchs = np.array_split(self.encoded_queries.cpu(), batch_size, axis=0)
+        # corpus_batchs = np.array_split(self.encoded_corpus.cpu(), batch_size, axis=0)
+        # corpus_batchs = [corpus_batch.to(self.device)
+        #                  for corpus_batch in corpus_batchs]
 
-        queries_batchs = [query_batch.unsqueeze(1) for query_batch in queries_batchs]
-        corpus_batchs = [corpus_batch.unsqueeze(0) for corpus_batch in corpus_batchs]
+        # queries_batchs = [query_batch.unsqueeze(1) for query_batch in queries_batchs]
+        # corpus_batchs = [corpus_batch.unsqueeze(0) for corpus_batch in corpus_batchs]
 
         predict = semantic_search(query_embeddings=self.encoded_queries,
                                   corpus_embeddings=self.encoded_corpus,

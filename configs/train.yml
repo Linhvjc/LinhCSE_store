@@ -1,6 +1,6 @@
 model_args: 
   # Modify
-  model_name_or_path: VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base
+  model_name_or_path: vinai/phobert-base
   first_teacher_name_or_path: VoVanPhuc/sup-SimCSE-VietNamese-phobert-base 
   second_teacher_name_or_path: keepitreal/vietnamese-sbert 
   distillation_loss: listmle    #[listmle, listnet]
@@ -28,7 +28,7 @@ data_args:
   # Modify  
   num_sample_train: 300000
   max_seq_length: 64
-  train_file: ./data/train.txt
+  train_file: ./data/answers.txt
   #Default
   dataset_name: null
   dataset_config_name: null
@@ -42,7 +42,7 @@ training_args:
   # Modify
   output_dir: ./runs/fine_tuning
   num_train_epochs: 9 
-  per_device_train_batch_size: 128 
+  per_device_train_batch_size: 128
   learning_rate: 5e-5 
   load_best_model_at_end: True
   overwrite_output_dir: True
@@ -54,7 +54,7 @@ wandb_args:
 
   # Training only
   model_registry: model-registry/fine-tuning
-  description: null
+  description: 'vinai/phobert-large'
   log_k: [5,10,20]
 
   # Hyper parameter search
