@@ -54,11 +54,10 @@ wandb_args:
 
   # Training only
   model_registry: model-registry/fine-tuning
-  description: 'vinai/phobert-large'
+  description: 'thredsold 0.7'
   log_k: [5,10,20]
 
   # Hyper parameter search
-  hyper_search: True
-  sweep_id: abc
+  sweep_id: rankcse_minilog/1tj8vk1s
   times: 30
 

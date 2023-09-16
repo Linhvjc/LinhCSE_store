@@ -177,7 +177,6 @@ class Train:
         datasets = DatasetDict({
             'train': datasets
         })
-        datasets = datasets.map(lambda sample : {'text': sample['text'].lower()})
         datasets = datasets.map(segment_pyvi)
         return datasets
 
@@ -483,7 +482,11 @@ class Train:
                         )
         return train_result.training_loss, model
 
-    def training_with_wandb(self):
+    def training_with_wandb(self, model_args = None, data_args = None, training_args = None):
+        model_args = model_args or self.model_args
+        data_args = data_args or self.data_args
+        training_args = training_args or self.training_args
+
         print('************', self.wandb_args['project'])
         """
         Training model and then log hyperparameter to wandb
@@ -542,8 +545,8 @@ class Train:
                                    type='model',
                                    description=self.wandb_args['description'],
                                    metadata=metadata)
-        new_model.add_dir(self.training_args.output_dir,
-                          name=f"model_{run.id}")
+        # new_model.add_dir(self.training_args.output_dir,
+        #                   name=f"model_{run.id}")
         
         run.log_artifact(artifact_or_path=new_model,
                          name='linh',
@@ -558,3 +561,4 @@ class Train:
 if __name__ == "__main__":
     train = Train()
     train.training_with_wandb()
+    # train.training()

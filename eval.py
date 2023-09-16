@@ -136,7 +136,7 @@ class Evaluation:
         if self.encoded_queries is None:
             queries_id = self.df[self.df_columns_name[0]].tolist()
             queries_text = [self.corpus[id] for id in queries_id]
-            queries_text = [ViTokenizer.tokenize(query.lower()) for query in queries_text]
+            queries_text = [ViTokenizer.tokenize(query) for query in queries_text]
 
             logging.info(f"{font.underline_text('Embedding query')}")
             self.encoded_queries = self._embedding(batch_size=batch_size, 
@@ -146,7 +146,7 @@ class Evaluation:
         corpus_id = np.array(list(self.corpus.keys())).flatten()
         if self.encoded_corpus is None:
             corpus_text = np.array(list(self.corpus.values())).flatten().tolist()
-            corpus_text = [ViTokenizer.tokenize(c.lower()) for c in corpus_text]
+            corpus_text = [ViTokenizer.tokenize(c) for c in corpus_text]
             logging.info(f"{font.underline_text('Embedding corpus')}")
             self.encoded_corpus = self._embedding(batch_size=batch_size, 
                                                   sentences=corpus_text)

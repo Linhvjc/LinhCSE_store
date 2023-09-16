@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.distributed as dist
 
 import transformers
-from transformers import RobertaTokenizer
+from transformers import RobertaTokenizer, AutoTokenizer, AutoModel
 from transformers.models.roberta.modeling_roberta import RobertaPreTrainedModel, RobertaModel, RobertaLMHead
 from transformers.models.bert.modeling_bert import BertPreTrainedModel, BertModel, BertLMPredictionHead
 from transformers.activations import gelu
@@ -15,6 +15,12 @@ from transformers.file_utils import (
     replace_return_docstrings,
 )
 from transformers.modeling_outputs import SequenceClassifierOutput, BaseModelOutputWithPoolingAndCrossAttentions
+from constants import load_config, train_config
+
+args = load_config(train_config)
+teacher_name = args['model_args']['first_teacher_name_or_path']
+teacher_model = AutoModel.from_pretrained(teacher_name)
+teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_name)
 
 class MLPLayer(nn.Module):
     """
@@ -154,6 +160,7 @@ def cl_init(cls, config):
     if cls.model_args['pooler_type'] == "cls":
         cls.mlp = MLPLayer(config)
     cls.sim = Similarity(temp=cls.model_args['temp'])
+    cls.sim_ce = Similarity(temp=1)
     cls.div = Divergence(beta_=cls.model_args['beta_'])
     if cls.model_args['distillation_loss'] == "listnet":
         cls.distillation_loss_fct = ListNet(cls.model_args['tau2'], cls.model_args['gamma_'])
@@ -261,14 +268,29 @@ def cl_forward(cls,
         z1 = torch.cat(z1_list, 0)
         z2 = torch.cat(z2_list, 0)
 
-    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
-    # Hard negative
-    if num_sent >= 3:
-        z1_z3_cos = cls.sim(z1.unsqueeze(1), z3.unsqueeze(0))
-        cos_sim = torch.cat([cos_sim, z1_z3_cos], 1)
-
-    labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
     loss_fct = nn.CrossEntropyLoss()
+    linh = True
+
+    cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
+    if linh:
+        cos_sim_ce = cls.sim_ce(z1.unsqueeze(1), z2.unsqueeze(0))
+
+        positive_sentence = (cos_sim_ce <= 0.7).float()
+        positive_sentence[positive_sentence == 0] = -1000
+        diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
+        mark = positive_sentence + diag_tensor
+        cos_sim_ce = cos_sim_ce * mark
+        labels = torch.arange(cos_sim_ce.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim_ce, labels)
+    else:
+        labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim, labels)
+
+    # Hard negative
+    # if num_sent >= 3:
+    #     z1_z3_cos = cls.sim(z1.unsqueeze(1), z3.unsqueeze(0))
+    #     cos_sim = torch.cat([cos_sim, z1_z3_cos], 1)
+    
 
     # Calculate loss with hard negatives
     if num_sent == 3:
@@ -278,8 +300,6 @@ def cl_forward(cls,
             [[0.0] * (cos_sim.size(-1) - z1_z3_cos.size(-1)) + [0.0] * i + [z3_weight] + [0.0] * (z1_z3_cos.size(-1) - i - 1) for i in range(z1_z3_cos.size(-1))]
         ).to(cls.device)
         cos_sim = cos_sim + weights
-
-    loss = loss_fct(cos_sim, labels)
 
     # RankCSE - knowledge distillation loss 
     student_top1_sim_pred = cos_sim.clone()

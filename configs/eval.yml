@@ -1,5 +1,5 @@
 test_path: ./data/general/final/test/benchmark_id.csv
-model_path: ./runs/best
+model_path: ./runs/fine_tuning
 corpus_path: ./data/general/final/test/corpus.json
 batch_size: 128
 k: 20

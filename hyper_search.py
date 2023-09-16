@@ -1,7 +1,7 @@
 import wandb
-from LinhCSE.train_2 import Train
+from train import Train
 from eval import Evaluation
-from CONSTANTS import test_path, corpus_path
+from constants import test_path, corpus_path
 from typing import Optional, Union
 
 class HyperparameterSearch(Train):
@@ -10,7 +10,8 @@ class HyperparameterSearch(Train):
         A class for hyperparameter search using sweep in wandb
         """
         super().__init__()
-        self.sweep_id = sweep_id
+        self.sweep_id = self.wandb_args['sweep_id']
+        self.times = self.wandb_args['times']
         
     def _search(self, config=None):
         """
@@ -26,8 +27,12 @@ class HyperparameterSearch(Train):
         self.data_args['max_seq_length'] = config.max_seq_length
         self.model_args['mlp_only_train'] = config.mlp_only_train
         self.model_args['pooler_type'] = config.pooler_type
+        self.model_args['tau2'] = config.tau2
+        self.model_args['temp'] = config.temp
+        self.model_args['mlm_weight'] = config.mlm_weight
+        self.data_args['mlm_probability'] = config.mlm_probability
         try:
-            loss = self.training(self.model_args, self.data_args, self.training_args)
+            loss = self.training_with_wandb(self.model_args, self.data_args, self.training_args)
             
             print("****** Evaluation ******")
             
@@ -38,13 +43,14 @@ class HyperparameterSearch(Train):
                                     corpus_path=corpus_path,
                                     batch_size= 128
                                     )
-            result = evaluation.evaluation(k = 10)
+            result = evaluation.evaluation(k = 20)
             wandb.log({'Recall@10': result})
         except:
             print('Error when computing recall')
             raise
     
-    def start_search(self, times = 10) -> None:
+    def start_search(self, times:Optional[int] = None ) -> None:
+        times = None or self.times
         """
         Start new hyperparameter search times
         Args:
@@ -57,4 +63,4 @@ class HyperparameterSearch(Train):
         
 if __name__ == '__main__':
     hyperparameter_search = HyperparameterSearch('rankcse_minilog/dexi056r')
-    hyperparameter_search.start_search(30)
+    hyperparameter_search.start_search()
