@@ -1,6 +1,6 @@
 # System libraries
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import collections
 import inspect
 import math
@@ -28,7 +28,7 @@ from transformers.trainer_utils import (
     PredictionOutput,
     TrainOutput,
     default_compute_objective,
-    default_hp_space,
+    # default_hp_space,
     set_seed,
     speed_metrics,
 )

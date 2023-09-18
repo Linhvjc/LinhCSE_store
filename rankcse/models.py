@@ -283,18 +283,18 @@ def cl_forward(cls,
         positive_sentence[positive_sentence == 0] = -1000
         diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
         mark = positive_sentence + diag_tensor
-        cos_sim_ce = cos_sim_ce * mark
-        labels = torch.arange(cos_sim_ce.size(0)).long().to(cls.device)
-        loss = loss_fct(cos_sim_ce, labels)
+        cos_sim = cos_sim * mark
+        labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim, labels)
     elif teacher:
         real_teacher_pred = teacher_top1_sim_pred * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
         positive_sentence[positive_sentence == 0] = -1000
         diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
         mark = positive_sentence + diag_tensor
-        cos_sim_ce = cos_sim_ce * mark
-        labels = torch.arange(cos_sim_ce.size(0)).long().to(cls.device)
-        loss = loss_fct(cos_sim_ce, labels)
+        cos_sim = cos_sim * mark
+        labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim, labels)
     elif first_teacher:
         real_teacher_pred = super_teacher * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
