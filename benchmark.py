@@ -61,7 +61,8 @@ class Benchmark:
             for sentence in sample:
                 retrieval_sentence = datasets['sentences'][sentence['corpus_id']]['text']
                 if sentence['score'] >= self.thredsold and \
-                    retrieval_sentence.lower() != query_sentence.lower():
+                retrieval_sentence.lower() != query_sentence.lower() and \
+                retrieval_sentence.lower() not in result:
                     result.append(datasets['sentences'][sentence['corpus_id']]['text'])
             
             if len(result) > 0:

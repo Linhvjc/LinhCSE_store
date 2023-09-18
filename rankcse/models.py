@@ -185,6 +185,7 @@ def cl_forward(cls,
     mlm_input_ids=None,
     mlm_labels=None,
     teacher_top1_sim_pred=None,
+    super_teacher=None
 ):
     return_dict = return_dict if return_dict is not None else cls.config.use_return_dict
     ori_input_ids = input_ids
@@ -270,8 +271,9 @@ def cl_forward(cls,
 
     loss_fct = nn.CrossEntropyLoss()
     
-    student = True
-    teacher = not student
+    student = False
+    teacher = False
+    first_teacher = True
     
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     cos_sim_ce = cls.sim_ce(z1.unsqueeze(1), z2.unsqueeze(0))
@@ -286,6 +288,15 @@ def cl_forward(cls,
         loss = loss_fct(cos_sim_ce, labels)
     elif teacher:
         real_teacher_pred = teacher_top1_sim_pred * cls.model_args['temp']
+        positive_sentence = (real_teacher_pred <= 0.7).float()
+        positive_sentence[positive_sentence == 0] = -1000
+        diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
+        mark = positive_sentence + diag_tensor
+        cos_sim_ce = cos_sim_ce * mark
+        labels = torch.arange(cos_sim_ce.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim_ce, labels)
+    elif first_teacher:
+        real_teacher_pred = super_teacher * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
         positive_sentence[positive_sentence == 0] = -1000
         diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
@@ -475,6 +486,7 @@ class RobertaForCL(RobertaPreTrainedModel):
         mlm_input_ids=None,
         mlm_labels=None,
         teacher_top1_sim_pred=None,
+        super_teacher=None
     ):
         if sent_emb:
             return sentemb_forward(self, self.roberta,
@@ -504,4 +516,5 @@ class RobertaForCL(RobertaPreTrainedModel):
                 mlm_input_ids=mlm_input_ids,
                 mlm_labels=mlm_labels,
                 teacher_top1_sim_pred=teacher_top1_sim_pred,
+                super_teacher=super_teacher
             )

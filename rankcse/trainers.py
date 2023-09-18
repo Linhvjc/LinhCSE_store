@@ -491,6 +491,7 @@ class CLTrainer(Trainer):
                         teacher_top1_sim_pred = (self.args.alpha_ * first_teacher_top1_sim) + ((1.0 - self.args.alpha_) * second_teacher_top1_sim)
 
                     inputs["teacher_top1_sim_pred"] = teacher_top1_sim_pred
+                    inputs["super_teacher"] = first_teacher_top1_sim
 
 
                 if ((step + 1) % self.args.gradient_accumulation_steps != 0) and self.args.local_rank != -1:
