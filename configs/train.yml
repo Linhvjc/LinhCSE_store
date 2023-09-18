@@ -26,7 +26,7 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 300000
+  num_sample_train: 300
   max_seq_length: 64
   train_file: ./data/answers.txt
   #Default
