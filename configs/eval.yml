@@ -1,6 +1,6 @@
-test_path: ./data/general/final/test/benchmark_id.csv
+test_path: ./data/benchmark/benchmark_id.csv
 model_path: ./runs/fine_tuning
-corpus_path: ./data/general/final/test/corpus.json
+corpus_path: ./data/benchmark/corpus.json
 batch_size: 128
 k: 20
 export_output: True

@@ -18,3 +18,8 @@ def load_config(file_path):
 def segment_pyvi(sentence):
     sentence["text"]= ViTokenizer.tokenize(sentence['text'])
     return sentence
+
+def segment_pyvi_csv(sentence):
+    sentence["anchor"]= ViTokenizer.tokenize(sentence['anchor'])
+    sentence["positive"]= ViTokenizer.tokenize(sentence['positive'])
+    return sentence

@@ -26,9 +26,9 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 300
+  num_sample_train: 50000
   max_seq_length: 64
-  train_file: ./data/answers.txt
+  train_file: ./data/positive_50k.csv
   #Default
   dataset_name: null
   dataset_config_name: null
@@ -53,11 +53,12 @@ wandb_args:
   project: rankcse
 
   # Training only
-  model_registry: model-registry/fine-tuning
-  description: 'thredsold 0.7'
+  model_registry: model-registry/fine-tuning2
+  description: 'add positive 50k'
   log_k: [5,10,20]
 
   # Hyper parameter search
   sweep_id: rankcse_minilog/1tj8vk1s
   times: 30
+
 

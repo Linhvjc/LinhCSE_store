@@ -170,6 +170,9 @@ def cl_init(cls, config):
         raise NotImplementedError
     cls.init_weights()
 
+def custom_loss_fn(sim, label):
+    pass
+
 def cl_forward(cls,
     encoder,
     input_ids=None,
@@ -185,7 +188,7 @@ def cl_forward(cls,
     mlm_input_ids=None,
     mlm_labels=None,
     teacher_top1_sim_pred=None,
-    super_teacher=None
+    super_teacher=None,
 ):
     return_dict = return_dict if return_dict is not None else cls.config.use_return_dict
     ori_input_ids = input_ids
@@ -272,8 +275,9 @@ def cl_forward(cls,
     loss_fct = nn.CrossEntropyLoss()
     
     student = False
-    teacher = False
-    first_teacher = True
+    avg_teacher = False
+    first_teacher = False
+    infi = True
     
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     cos_sim_ce = cls.sim_ce(z1.unsqueeze(1), z2.unsqueeze(0))
@@ -286,7 +290,7 @@ def cl_forward(cls,
         cos_sim = cos_sim * mark
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)
-    elif teacher:
+    elif avg_teacher:
         real_teacher_pred = teacher_top1_sim_pred * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
         positive_sentence[positive_sentence == 0] = -1000
@@ -301,9 +305,18 @@ def cl_forward(cls,
         positive_sentence[positive_sentence == 0] = -1000
         diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
         mark = positive_sentence + diag_tensor
-        cos_sim_ce = cos_sim_ce * mark
-        labels = torch.arange(cos_sim_ce.size(0)).long().to(cls.device)
-        loss = loss_fct(cos_sim_ce, labels)
+        
+        cos_sim = cos_sim * mark
+        labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim, labels)
+    elif infi:
+        real_teacher_pred = super_teacher * cls.model_args['temp']
+        positive_sentence = (real_teacher_pred <= 0.7)
+        diag_tensor = torch.diag(torch.tensor([True] * positive_sentence.size()[0])).to(cls.device)
+        mark = (positive_sentence + diag_tensor).float()
+        cos_sim = cos_sim * mark
+        labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
+        loss = loss_fct(cos_sim, labels)
     else:
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)
@@ -516,5 +529,5 @@ class RobertaForCL(RobertaPreTrainedModel):
                 mlm_input_ids=mlm_input_ids,
                 mlm_labels=mlm_labels,
                 teacher_top1_sim_pred=teacher_top1_sim_pred,
-                super_teacher=super_teacher
+                super_teacher=super_teacher,
             )

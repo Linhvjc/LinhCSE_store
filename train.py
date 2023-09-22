@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 from transformers.tokenization_utils_base import PaddingStrategy, PreTrainedTokenizerBase
 from transformers import (
@@ -22,7 +22,7 @@ import torch
 import logging
 
 from utils.fronts import Font
-from constants import load_config, train_config, eval_config, segment_pyvi, output_path
+from constants import load_config, train_config, eval_config, segment_pyvi, segment_pyvi_csv, output_path
 from eval import Evaluation
 from rankcse.trainers import CLTrainer
 from rankcse.models import RobertaForCL, BertForCL
@@ -169,17 +169,21 @@ class Train:
                                     data_files=data_files, 
                                     cache_dir="./data/",
                                     delimiter="\t" if "tsv" in self.data_args['train_file'] else ",")
+            datasets = datasets['train'].select(range(self.data_args['num_sample_train']))
+            datasets = DatasetDict({
+                'train': datasets
+            })
+            datasets = datasets.map(segment_pyvi_csv)
         else:
             datasets = load_dataset(extension, 
                                     data_files=data_files, 
                                     cache_dir="./data/")
-        datasets = datasets['train'].select(range(self.data_args['num_sample_train']))
-        datasets = DatasetDict({
-            'train': datasets
-        })
-        datasets = datasets.map(segment_pyvi)
+            datasets = datasets['train'].select(range(self.data_args['num_sample_train']))
+            datasets = DatasetDict({
+                'train': datasets
+            })
+            datasets = datasets.map(segment_pyvi)
         return datasets
-
     def _training_initial(self):
         """
         Initial some arguments and model before training
@@ -472,8 +476,9 @@ class Train:
             else: 
                 model_path = None
             train_result = trainer.train(model_path=model_path)
+            
             trainer.save_model()  # Saves the tokenizer too for easy upload
-
+            # print(f"total positive: {model.count_positive}")
         self._log_param(trainer=trainer,
                         train_result=train_result,
                         training_args=training_args,
