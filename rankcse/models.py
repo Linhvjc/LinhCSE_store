@@ -150,6 +150,26 @@ class Pooler(nn.Module):
         else:
             raise NotImplementedError
 
+import math    
+import numpy as np
+
+def custom_cross_entropy(X, not_ignore):
+    softmax = custom_softmax(X, not_ignore)
+    return -sum([math.log(i) for i in softmax])
+
+def custom_softmax(X, not_ignore):
+    
+    result = []
+    for i in range(X.size()[0]):
+        target = X[i][i].item()
+        actual_arr = np.array(X[i][not_ignore[i]].detach().numpy())
+
+        exp_values = np.exp(actual_arr)
+        sum_exp_values = np.sum(exp_values)
+        result.append(np.exp(target)/sum_exp_values)
+    return result
+
+
 
 def cl_init(cls, config):
     """
@@ -277,12 +297,12 @@ def cl_forward(cls,
     student = False
     avg_teacher = False
     first_teacher = False
-    infi = True
+    infinity = False
+    custom_loss = True
     
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     cos_sim_ce = cls.sim_ce(z1.unsqueeze(1), z2.unsqueeze(0))
     if student:
-
         positive_sentence = (cos_sim_ce <= 0.7).float()
         positive_sentence[positive_sentence == 0] = -1000
         diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
@@ -302,21 +322,30 @@ def cl_forward(cls,
     elif first_teacher:
         real_teacher_pred = super_teacher * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
-        positive_sentence[positive_sentence == 0] = -1000
-        diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
+        positive_sentence[positive_sentence == 0] = -1000000
+        diag_tensor = torch.diag(torch.tensor([1000001] * positive_sentence.size()[0])).to(cls.device)
         mark = positive_sentence + diag_tensor
-        
         cos_sim = cos_sim * mark
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)
-    elif infi:
+    elif infinity:
         real_teacher_pred = super_teacher * cls.model_args['temp']
-        positive_sentence = (real_teacher_pred <= 0.7)
-        diag_tensor = torch.diag(torch.tensor([True] * positive_sentence.size()[0])).to(cls.device)
-        mark = (positive_sentence + diag_tensor).float()
+        negative_sentence = (real_teacher_pred <= 0.7)
+        diag_tensor = torch.diag(torch.tensor([True] * negative_sentence.size()[0])).to(cls.device)
+        mark = (negative_sentence + diag_tensor).float()
+        # mark[mark == 0] = -100
         cos_sim = cos_sim * mark
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)
+    elif custom_loss:
+        real_teacher_pred = super_teacher * cls.model_args['temp']
+        negative_sentence = (real_teacher_pred <= 0.7)
+        diag_tensor = torch.diag(torch.tensor([True] * negative_sentence.size()[0])).to(cls.device)
+        mark = (negative_sentence + diag_tensor).cpu()
+
+        true_negative = [np.where(row)[0].tolist() for row in mark]
+        loss = custom_cross_entropy(cos_sim.cpu(), true_negative)
+        
     else:
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)

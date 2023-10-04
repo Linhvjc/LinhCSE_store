@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 from transformers.tokenization_utils_base import PaddingStrategy, PreTrainedTokenizerBase
 from transformers import (
@@ -300,7 +300,7 @@ class Train:
             sent_1_cname = column_names[0]
         else:
             raise NotImplementedError
-
+        
         return sent_0_cname, sent_1_cname, sent_2_cname
 
     def _log_param(self,

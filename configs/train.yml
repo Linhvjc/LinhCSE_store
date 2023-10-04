@@ -26,9 +26,9 @@ model_args:
 
 data_args:
   # Modify  
-  num_sample_train: 50000
+  num_sample_train: 500000
   max_seq_length: 64
-  train_file: ./data/positive_50k.csv
+  train_file: ./data/train.txt
   #Default
   dataset_name: null
   dataset_config_name: null
@@ -42,7 +42,7 @@ training_args:
   # Modify
   output_dir: ./runs/fine_tuning
   num_train_epochs: 9 
-  per_device_train_batch_size: 128
+  per_device_train_batch_size: 512
   learning_rate: 5e-5 
   load_best_model_at_end: True
   overwrite_output_dir: True
@@ -54,7 +54,7 @@ wandb_args:
 
   # Training only
   model_registry: model-registry/fine-tuning2
-  description: 'add positive 50k'
+  description: 'best hyper with phobert v2'
   log_k: [5,10,20]
 
   # Hyper parameter search
