@@ -1,7 +1,10 @@
-test_path: ./data/benchmark/benchmark_id.csv
-model_path: ./runs/fine_tuning
-corpus_path: ./data/benchmark/corpus.json
-batch_size: 128
-k: 20
+# test_path: ./data/benchmark/general/benchmark_id.csv
+# corpus_path: ./data/benchmark/general/corpus.json
+test_path: ./data/benchmark/edu/benchmark_id.csv
+corpus_path: ./data/benchmark/edu/corpus_noise_large.json
+model_path: ./runs/random
+batch_size: 512
+pooler: 'cls'
+k: [5,10,20]
 export_output: True
 output_path : ./output

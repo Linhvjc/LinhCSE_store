@@ -1,7 +1,7 @@
 import wandb
 from train import Train
 from eval import Evaluation
-from constants import test_path, corpus_path
+from constants import test_path, corpus_path, CLS_MAPPING
 from typing import Optional, Union
 
 class HyperparameterSearch(Train):
@@ -20,31 +20,31 @@ class HyperparameterSearch(Train):
         with wandb.init(config=config):
             config = wandb.config
         self.model_args['distillation_loss'] = config.distillation_loss
-        self.data_args['num_sample_train'] = config.num_sample_train
+        self.model_args['first_teacher_name_or_path'] = config.first_teacher_name_or_path
+        self.model_args['second_teacher_name_or_path'] = config.second_teacher_name_or_path
+        self.model_args['pooler_first_teacher'] = CLS_MAPPING[config.first_teacher_name_or_path]
+        self.model_args['pooler_second_teacher'] = CLS_MAPPING[config.second_teacher_name_or_path]
+        # self.data_args['num_sample_train'] = config.num_sample_train
         self.training_args.num_train_epochs = config.num_train_epochs
-        self.training_args.per_device_train_batch_size = config.per_device_train_batch_size
+        # self.training_args.per_device_train_batch_size = config.per_device_train_batch_size
         self.training_args.learning_rate = config.learning_rate
-        self.data_args['max_seq_length'] = config.max_seq_length
+        # self.data_args['max_seq_length'] = config.max_seq_length
         self.model_args['mlp_only_train'] = config.mlp_only_train
-        self.model_args['pooler_type'] = config.pooler_type
-        self.model_args['tau2'] = config.tau2
-        self.model_args['temp'] = config.temp
-        self.model_args['mlm_weight'] = config.mlm_weight
-        self.data_args['mlm_probability'] = config.mlm_probability
+        # self.model_args['pooler_type'] = config.pooler_type
+        # self.model_args['tau2'] = config.tau2
+        # self.model_args['temp'] = config.temp
+        # self.model_args['mlm_weight'] = config.mlm_weight
+        # self.data_args['mlm_probability'] = config.mlm_probability
         try:
-            loss = self.training_with_wandb(self.model_args, self.data_args, self.training_args)
+            loss = self.training(self.model_args, self.data_args, self.training_args)
             
             print("****** Evaluation ******")
             
             model_path = self.training_args.output_dir
             
-            evaluation = Evaluation(test_path=test_path,
-                                    model_path=model_path,
-                                    corpus_path=corpus_path,
-                                    batch_size= 128
-                                    )
-            result = evaluation.evaluation(k = 20)
-            wandb.log({'Recall@10': result})
+            evaluation = Evaluation()
+            result = evaluation.evaluation()
+            wandb.log({'Recall@20': result})
         except:
             print('Error when computing recall')
             raise

@@ -1,7 +1,15 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
-from transformers.tokenization_utils_base import PaddingStrategy, PreTrainedTokenizerBase
+from rankcse.models import RobertaForCL, BertForCL
+from rankcse.trainers import CLTrainer
+from eval import Evaluation
+from constants import load_config, train_config, eval_config, segment_pyvi, segment_pyvi_csv, output_path
+from utils.fronts import Font
+import logging
+import torch
+import wandb
+import shutil
+from dataclasses import dataclass
+from typing import Optional, Union, List, Dict, Tuple
+from datasets import load_dataset, DatasetDict
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
@@ -13,26 +21,16 @@ from transformers import (
     BertForPreTraining,
     PhobertTokenizer
 )
-from datasets import load_dataset, DatasetDict
-from typing import Optional, Union, List, Dict, Tuple
-from dataclasses import dataclass
-import shutil
-import wandb
-import torch
-import logging
+from transformers.tokenization_utils_base import PaddingStrategy, PreTrainedTokenizerBase
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
-from utils.fronts import Font
-from constants import load_config, train_config, eval_config, segment_pyvi, segment_pyvi_csv, output_path
-from eval import Evaluation
-from rankcse.trainers import CLTrainer
-from rankcse.models import RobertaForCL, BertForCL
-
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s:[ %(levelname)s ]:\t%(message)s ')
+logging.basicConfig(level=logging.INFO)
 font = Font()
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
 
 @dataclass
 class OurDataCollatorWithPadding:
@@ -137,6 +135,7 @@ class CustomTrainingArguments(TrainingArguments):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+
 class Train:
     def __init__(self) -> None:
         """
@@ -145,7 +144,8 @@ class Train:
         self.args = load_config(train_config)
         self.model_args = self.args['model_args']
         self.data_args = self.args['data_args']
-        self.training_args = CustomTrainingArguments(**self.args['training_args'])
+        self.training_args = CustomTrainingArguments(
+            **self.args['training_args'])
         self.wandb_args = self.args['wandb_args']
 
     def _load_dataset(self) -> DatasetDict:
@@ -165,25 +165,30 @@ class Train:
         if extension == "txt":
             extension = "text"
         if extension == "csv":
-            datasets = load_dataset(extension, 
-                                    data_files=data_files, 
+            datasets = load_dataset(extension,
+                                    data_files=data_files,
                                     cache_dir="./data/",
                                     delimiter="\t" if "tsv" in self.data_args['train_file'] else ",")
-            datasets = datasets['train'].select(range(self.data_args['num_sample_train']))
+            datasets = datasets['train'].select(
+                range(self.data_args['num_sample_train']))
             datasets = DatasetDict({
                 'train': datasets
             })
             datasets = datasets.map(segment_pyvi_csv)
         else:
-            datasets = load_dataset(extension, 
-                                    data_files=data_files, 
+            datasets = load_dataset(extension,
+                                    data_files=data_files,
                                     cache_dir="./data/")
-            datasets = datasets['train'].select(range(self.data_args['num_sample_train']))
+            # begin = 345000
+            datasets = datasets['train'].select(
+                # range(begin, begin + self.data_args['num_sample_train']))
+                range(self.data_args['num_sample_train']))
             datasets = DatasetDict({
                 'train': datasets
             })
             datasets = datasets.map(segment_pyvi)
         return datasets
+
     def _training_initial(self):
         """
         Initial some arguments and model before training
@@ -209,7 +214,8 @@ class Train:
                 self.model_args['model_name_or_path'], **config_kwargs)
         else:
             config = CONFIG_MAPPING[self.model_args['model_type']]()
-            logger.warning("You are instantiating a new config instance from scratch.")
+            logger.warning(
+                "You are instantiating a new config instance from scratch.")
 
         tokenizer_kwargs = {
             "cache_dir": self.model_args['cache_dir'],
@@ -219,54 +225,31 @@ class Train:
         }
         if self.model_args['model_name_or_path']:
             if 'phobert' in self.model_args['model_name_or_path']:
-                tokenizer = PhobertTokenizer.from_pretrained(self.model_args['model_name_or_path'], 
+                tokenizer = PhobertTokenizer.from_pretrained(self.model_args['model_name_or_path'],
                                                              **tokenizer_kwargs)
             else:
-                tokenizer = AutoTokenizer.from_pretrained(self.model_args['model_name_or_path'], 
+                tokenizer = AutoTokenizer.from_pretrained(self.model_args['model_name_or_path'],
                                                           **tokenizer_kwargs)
         else:
             raise ValueError(
                 "You should using existing model or tokenizer from huggingface"
             )
-            
-        roberta_structure = 'roberta' in self.model_args['model_name_or_path'] or \
-                            'phobert' in self.model_args['model_name_or_path'] or \
-                            'bge' in self.model_args['model_name_or_path']         
-        bert_struture = 'bert' in self.model_args['model_name_or_path']
-        model_exist = self.model_args['model_name_or_path']
 
-        if model_exist:
-            if roberta_structure:
-                model = RobertaForCL.from_pretrained(
-                    self.model_args['model_name_or_path'],
-                    from_tf=bool(
-                        ".ckpt" in self.model_args['model_name_or_path']),
-                    config=config,
-                    cache_dir=self.model_args['cache_dir'],
-                    revision=self.model_args['model_revision'],
-                    use_auth_token=True if self.model_args['use_auth_token'] else None,
-                    model_args=self.model_args
-                )
-            elif bert_struture:
-                model = BertForCL.from_pretrained(
-                    self.model_args['model_name_or_path'],
-                    from_tf=bool(
-                        ".ckpt" in self.model_args['model_name_or_path']),
-                    config=config,
-                    cache_dir=self.model_args['cache_dir'],
-                    revision=self.model_args['model_revision'],
-                    use_auth_token=True if self.model_args['use_auth_token'] else None,
-                    model_args=self.model_args
-                )
-                if self.model_args['do_mlm']:
-                    pretrained_model = BertForPreTraining.from_pretrained(
-                        self.model_args['model_name_or_path'])
-                    model.lm_head.load_state_dict(
-                        pretrained_model.cls.predictions.state_dict())
-            else:
-                raise NotImplementedError
-        if not model_exist:
-            raise NotImplementedError
+        # roberta_structure = 'roberta' in self.model_args['model_name_or_path'] or \
+        #                     'phobert' in self.model_args['model_name_or_path'] or \
+        #                     'bge' in self.model_args['model_name_or_path']
+        # bert_struture = 'bert' in self.model_args['model_name_or_path']
+        # model_exist = self.model_args['model_name_or_path']
+
+        model = RobertaForCL.from_pretrained(
+            self.model_args['model_name_or_path'],
+            from_tf=bool(".ckpt" in self.model_args['model_name_or_path']),
+            config=config,
+            cache_dir=self.model_args['cache_dir'],
+            revision=self.model_args['model_revision'],
+            use_auth_token=True if self.model_args['use_auth_token'] else None,
+            model_args=self.model_args
+        )
 
         model.resize_token_embeddings(len(tokenizer))
 
@@ -300,7 +283,7 @@ class Train:
             sent_1_cname = column_names[0]
         else:
             raise NotImplementedError
-        
+
         return sent_0_cname, sent_1_cname, sent_2_cname
 
     def _log_param(self,
@@ -321,7 +304,7 @@ class Train:
         Return:
             None
         """
-        output_train_file = os.path.join(training_args.output_dir, 
+        output_train_file = os.path.join(training_args.output_dir,
                                          "train_results.txt")
         with open(output_train_file, "w") as writer:
             writer.write(f"*****Model Arguments*****\n")
@@ -334,12 +317,13 @@ class Train:
 
             writer.write(f"*****Training Arguments*****\n")
             writer.write(f"LEARNING RATE: {training_args.learning_rate}\n")
-            writer.write(f"BATCH SIZE: {training_args.per_device_train_batch_size}\n")
+            writer.write(
+                f"BATCH SIZE: {training_args.per_device_train_batch_size}\n")
             writer.write(f"EPOCH: {training_args.num_train_epochs}\n")
             writer.write(f"AVERAGE LOSS: {train_result.training_loss}\n")
 
         # Need to save the state, since Trainer.save_model saves only the tokenizer with the model
-        trainer.state.save_to_json(os.path.join(training_args.output_dir, 
+        trainer.state.save_to_json(os.path.join(training_args.output_dir,
                                                 "trainer_state.json"))
 
     def _prepare_features(self,
@@ -413,9 +397,9 @@ class Train:
             training_args = self.training_args
 
         output_exist_and_not_empty = os.path.exists(training_args.output_dir) \
-                                    and os.listdir(training_args.output_dir) \
-                                    and training_args.do_train \
-                                    and not training_args.overwrite_output_dir
+            and os.listdir(training_args.output_dir) \
+            and training_args.do_train \
+            and not training_args.overwrite_output_dir
         if output_exist_and_not_empty:
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty."
@@ -428,7 +412,8 @@ class Train:
         datasets = self._load_dataset()
         model, tokenizer = self._training_initial()
         # Prepare features
-        sent_0_cname, sent_1_cname, sent_2_cname = self._prepare_columns(datasets)
+        sent_0_cname, sent_1_cname, sent_2_cname = self._prepare_columns(
+            datasets)
         column_names = datasets["train"].column_names
 
         if training_args.do_train:
@@ -445,7 +430,7 @@ class Train:
                     "tokenizer": tokenizer,
                     "data_args": data_args}
             )
-        
+
         if data_args['pad_to_max_length']:
             data_collator = default_data_collator
         else:
@@ -455,6 +440,8 @@ class Train:
 
         training_args.first_teacher_name_or_path = model_args['first_teacher_name_or_path']
         training_args.second_teacher_name_or_path = model_args['second_teacher_name_or_path']
+        training_args.pooler_first_teacher = model_args['pooler_first_teacher']
+        training_args.pooler_second_teacher = model_args['pooler_second_teacher']
         training_args.tau2 = model_args['tau2']
         training_args.alpha_ = model_args['alpha_']
 
@@ -465,18 +452,29 @@ class Train:
             tokenizer=tokenizer,
             data_collator=data_collator,
         )
+        training_args.dataloader_pin_memory = True
+        training_args.optimizer = "AdamW"
+        training_args.early_stopping = 50
+
+        # trainer = CustomTrainer(
+        #     args=training_args,
+        #     model=model,
+        #     train_dataset=train_dataset if training_args.do_train else None,
+        #     tokenizer=tokenizer,
+        # )
         trainer.model_args = model_args
 
         model_valid = model_args['model_name_or_path'] is not None \
-                      and os.path.isdir(model_args['model_name_or_path'])
+            and os.path.isdir(model_args['model_name_or_path'])
         # Training
         if training_args.do_train:
             if model_valid:
                 model_path = model_args['model_name_or_path']
-            else: 
+            else:
                 model_path = None
-            train_result = trainer.train(model_path=model_path)
-            
+            # train_result = trainer.train(model_path=model_path)
+            train_result = trainer.train()
+
             trainer.save_model()  # Saves the tokenizer too for easy upload
             # print(f"total positive: {model.count_positive}")
         self._log_param(trainer=trainer,
@@ -487,7 +485,7 @@ class Train:
                         )
         return train_result.training_loss, model
 
-    def training_with_wandb(self, model_args = None, data_args = None, training_args = None):
+    def training_with_wandb(self, model_args=None, data_args=None, training_args=None):
         model_args = model_args or self.model_args
         data_args = data_args or self.data_args
         training_args = training_args or self.training_args
@@ -511,7 +509,7 @@ class Train:
         evaluation = Evaluation(args=eval_args)
         eval_result = {}
         for k in set(self.wandb_args['log_k']):
-            eval_result[f"recall@{k}"] = evaluation.evaluation(k=k)
+            eval_result[f"recall@{k}"] = evaluation.evaluation(k=[k])
 
         run = wandb.init(
             project=self.wandb_args['project'],
@@ -552,16 +550,17 @@ class Train:
                                    metadata=metadata)
         # new_model.add_dir(self.training_args.output_dir,
         #                   name=f"model_{run.id}")
-        
+
         run.log_artifact(artifact_or_path=new_model,
                          name='linh',
                          type='model')
-        run.link_artifact(new_model, 
-                          self.wandb_args['model_registry'], 
+        run.link_artifact(new_model,
+                          self.wandb_args['model_registry'],
                           aliases='')
         run.finish()
         logging.info(font.info_text(
             f"Save model registry to wandb successfully"))
+
 
 if __name__ == "__main__":
     train = Train()

@@ -1,4 +1,5 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 import torch
 from transformers import AutoModel, PhobertTokenizer, AutoTokenizer
@@ -14,8 +15,7 @@ from utils.fronts import Font
 from constants import load_config, eval_config
 
 import logging
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s:[ %(levelname)s ]:\t%(message)s ')
+logging.basicConfig(level=logging.INFO)
 font = Font()
 
 
@@ -60,6 +60,7 @@ class Evaluation:
             f"Model path (or name): {self.args['model_path']}"))
         logging.info(font.info_text(
             f"Corpus path: {self.args['corpus_path']}"))
+        logging.info(font.info_text(f"Pooler type: {self.args['pooler']}"))
         logging.info(font.info_text(f"Batch size: {self.args['batch_size']}"))
         logging.info(font.info_text(f"Df columns name: {df_columns_name}"))
         print(font.inline_text('-'))
@@ -88,7 +89,14 @@ class Evaluation:
             tokenizer_batch = tokenizer_batch.to(self.device)
             with torch.no_grad():
                 encoded_batch = self.model(**tokenizer_batch)
-                encoded_batch = encoded_batch.last_hidden_state.mean(dim=1).squeeze()
+                if self.args['pooler'] == 'avg':
+                    encoded_batch = encoded_batch.last_hidden_state.mean(dim=1)
+                    # encoded_batch = encoded_batch.last_hidden_state.mean(dim=1).squeeze()
+                elif self.args['pooler'] == 'cls':
+                    encoded_batch = encoded_batch.last_hidden_state[:, 0, :]
+                else:
+                    raise NotImplementedError
+                
                 encoded_batch = torch.reshape(encoded_batch, (encoded_batch.shape[0], -1)) \
                     if len(batch) != 1 else (torch.reshape(encoded_batch, (1, -1)))
                 # replace with vstack or hstack
@@ -154,14 +162,6 @@ class Evaluation:
 
         logging.info(f"{font.underline_text('Calculate consine similarity')}")
 
-        # queries_batchs = np.array_split(self.encoded_queries.cpu(), batch_size, axis=0)
-        # corpus_batchs = np.array_split(self.encoded_corpus.cpu(), batch_size, axis=0)
-        # corpus_batchs = [corpus_batch.to(self.device)
-        #                  for corpus_batch in corpus_batchs]
-
-        # queries_batchs = [query_batch.unsqueeze(1) for query_batch in queries_batchs]
-        # corpus_batchs = [corpus_batch.unsqueeze(0) for corpus_batch in corpus_batchs]
-
         predict = semantic_search(query_embeddings=self.encoded_queries,
                                   corpus_embeddings=self.encoded_corpus,
                                   query_chunk_size=100,
@@ -174,7 +174,7 @@ class Evaluation:
 
         return predict
 
-    def evaluation(self, k: Optional[int] = None, test_path: Optional[str] = None, batch_size: Optional[int] = None) -> float:
+    def evaluation(self, k: Optional[list] = None, test_path: Optional[str] = None, batch_size: Optional[int] = None) -> float:
         """
         Makes the Evaluation
 
@@ -189,26 +189,28 @@ class Evaluation:
         logging.info(f"{font.bool_text('Evaluation')}")
         test_path = test_path or self.args['test_path']
         batch_size = batch_size or self.args['batch_size']
-        k = k or self.args['k']
+        list_k = k or self.args['k']
 
-        y_pred = self._inference(k=k, 
-                                 test_path=test_path, 
-                                 batch_size=batch_size)
+        for k in list_k:
+            y_pred = self._inference(k=k, 
+                                    test_path=test_path, 
+                                    batch_size=batch_size)
 
-        y_true = self.df[self.df_columns_name[1]].tolist()
-        y_true = [eval(label) for label in y_true]
+            y_true = self.df[self.df_columns_name[1]].tolist()
+            y_true = [eval(label) for label in y_true]
 
-        self.y_true = y_true
-        self.y_pred = y_pred
+            self.y_true = y_true
+            self.y_pred = y_pred
 
-        recall_top_k = self._calculate_top_k(y_true=y_true, y_pred=y_pred, k=k)
-        print(font.bool_text(f"""
-              =========================================================================
-              |                             Recall@{k}: {recall_top_k}                |
-              =========================================================================
-              """))
+        
+            recall_top_k = self._calculate_top_k(y_true=y_true, y_pred=y_pred, k=k)
+            print(font.bool_text(f"""
+                =========================================================================
+                |                             Recall@{k}: {recall_top_k}                |
+                =========================================================================
+                """))
 
-        self._export_output(k=k)
+            self._export_output(k=k)
         return recall_top_k
 
     def _export_output(self, path: Optional[str] = None, k: Optional[int] = None):

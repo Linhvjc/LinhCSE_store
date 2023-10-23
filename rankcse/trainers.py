@@ -13,6 +13,9 @@ import time
 import warnings
 from pathlib import Path
 import importlib.util
+from tqdm.auto import tqdm, trange
+import statistics
+import bitsandbytes as bnb
 # import wandb
 
 from packaging import version
@@ -96,112 +99,32 @@ sys.path.insert(0, PATH_TO_SENTEVAL)
 import numpy as np
 from datetime import datetime
 from filelock import FileLock
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from rankcse.teachers import Teacher
 
 logger = logging.get_logger(__name__)
 
+def get_parameter_names(model, forbidden_layer_types):
+    """
+    Returns the names of the model parameters that are not inside a forbidden layer.
+    """
+    result = []
+    for name, child in model.named_children():
+        result += [
+            f"{name}.{n}"
+            for n in get_parameter_names(child, forbidden_layer_types)
+            if not isinstance(child, tuple(forbidden_layer_types))
+        ]
+    # Add model specific parameters (defined with nn.Parameter) since they are not in any child.
+    result += list(model._parameters.keys())
+    return result
+
 
 class CLTrainer(Trainer):
-    def _save_checkpoint(self, model, trial, metrics=None):
-        """
-        Compared to original implementation, we change the saving policy to
-        only save the best-validation checkpoints.
-        """
-
-        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
-        # want to save.
-        assert _model_unwrap(model) is self.model, "internal model should be a reference to self.model"
-
-        # Determine the new best metric / best model checkpoint
-        if metrics is not None and self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-            if not metric_to_check.startswith("eval_"):
-                metric_to_check = f"eval_{metric_to_check}"
-            metric_value = metrics[metric_to_check]
-
-            operator = np.greater if self.args.greater_is_better else np.less
-            if (
-                self.state.best_metric is None
-                or self.state.best_model_checkpoint is None
-                or operator(metric_value, self.state.best_metric)
-            ):
-                output_dir = self.args.output_dir
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-                # Only save model when it is the best one
-                self.save_model(output_dir)
-                if self.deepspeed:
-                    self.deepspeed.save_checkpoint(output_dir)
-
-                # Save optimizer and scheduler
-                if self.sharded_dpp:
-                    self.optimizer.consolidate_state_dict()
-
-                if is_torch_tpu_available():
-                    xm.rendezvous("saving_optimizer_states")
-                    xm.save(self.optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                    with warnings.catch_warnings(record=True) as caught_warnings:
-                        xm.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                        reissue_pt_warnings(caught_warnings)
-                elif self.is_world_process_zero() and not self.deepspeed:
-                    # deepspeed.save_checkpoint above saves model/optim/sched
-                    torch.save(self.optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                    with warnings.catch_warnings(record=True) as caught_warnings:
-                        torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                    reissue_pt_warnings(caught_warnings)
-
-                # Save the Trainer state
-                if self.is_world_process_zero():
-                    self.state.save_to_json(os.path.join(output_dir, "trainer_state.json"))
-        else:
-            # Save model checkpoint
-            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-
-            if self.hp_search_backend is not None and trial is not None:
-                if self.hp_search_backend == HPSearchBackend.OPTUNA:
-                    run_id = trial.number
-                else:
-                    from ray import tune
-
-                    run_id = tune.get_trial_id()
-                run_name = self.hp_name(trial) if self.hp_name is not None else f"run-{run_id}"
-                output_dir = os.path.join(self.args.output_dir, run_name, checkpoint_folder)
-            else:
-                output_dir = os.path.join(self.args.output_dir, checkpoint_folder)
-
-                self.store_flos()
-
-            self.save_model(output_dir)
-            if self.deepspeed:
-                self.deepspeed.save_checkpoint(output_dir)
-
-            # Save optimizer and scheduler
-            if self.sharded_dpp:
-                self.optimizer.consolidate_state_dict()
-
-            if is_torch_tpu_available():
-                xm.rendezvous("saving_optimizer_states")
-                xm.save(self.optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                with warnings.catch_warnings(record=True) as caught_warnings:
-                    xm.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                    reissue_pt_warnings(caught_warnings)
-            elif self.is_world_process_zero() and not self.deepspeed:
-                # deepspeed.save_checkpoint above saves model/optim/sched
-                torch.save(self.optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                with warnings.catch_warnings(record=True) as caught_warnings:
-                    torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                reissue_pt_warnings(caught_warnings)
-
-
-            # Save the Trainer state
-            if self.is_world_process_zero():
-                self.state.save_to_json(os.path.join(output_dir, "trainer_state.json"))
-
-            # Maybe delete some older checkpoints.
-            if self.is_world_process_zero():
-                self._rotate_checkpoints(use_mtime=True)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        set_seed(53)
     
     def train(self, model_path: Optional[str] = None, trial: Union["optuna.Trial", Dict[str, Any]] = None):
         """
@@ -217,28 +140,21 @@ class CLTrainer(Trainer):
         The main difference between ours and Huggingface's original implementation is that we 
         also load model_args when reloading best checkpoints for evaluation.
         """
-        # This might change the seed so needs to run first.
-        self._hp_search_setup(trial)
-        # import wandb
-        # wandb.init(
-        #     # set the wandb project where this run will be logged
-        #     project="rankcse-log",
-        # )
 
         # Model re-init
-        if self.model_init is not None:
-            # Seed must be set before instantiating the model when using model_init.
-            set_seed(self.args.seed)
+        # if self.model_init is not None:
+        #     # Seed must be set before instantiating the model when using model_init.
+        #     set_seed(self.args.seed)
 
-            model = self.call_model_init(trial)
-            if not self.is_model_parallel:
-                model = model.to(self.args.device)
+        #     model = self.call_model_init(trial)
+        #     if not self.is_model_parallel:
+        #         model = model.to(self.args.device)
 
-            self.model = model
-            self.model_wrapped = model
+        #     self.model = model
+        #     self.model_wrapped = model
 
-            # Reinitializes optimizer and scheduler
-            self.optimizer, self.lr_scheduler = None, None
+        #     # Reinitializes optimizer and scheduler
+        #     self.optimizer, self.lr_scheduler = None, None
 
         # Keeping track whether we can can len() on the dataset or not
         train_dataset_is_sized = isinstance(self.train_dataset, collections.abc.Sized)
@@ -277,6 +193,7 @@ class CLTrainer(Trainer):
         else:
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
+
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
 
@@ -284,10 +201,6 @@ class CLTrainer(Trainer):
         self._load_optimizer_and_scheduler(model_path)
 
         model = self.model_wrapped
-
-        # Mixed precision training with apex (torch < 1.6)
-        if self.use_apex:
-            model, self.optimizer = amp.initialize(model, self.optimizer, opt_level=self.args.fp16_opt_level)
 
         # Multi-gpu training (should be after apex fp16 initialization)
         if self.args.n_gpu > 1:
@@ -369,12 +282,12 @@ class CLTrainer(Trainer):
         #! RankCSE - Initialize the teacher
         teacher = None
         if self.args.second_teacher_name_or_path is None:
-            teacher_pooler = ("cls_before_pooler" if ("simcse" in self.args.first_teacher_name_or_path or "diffcse" in self.args.first_teacher_name_or_path) else "avg")
+            teacher_pooler = self.args.pooler_first_teacher
             teacher = Teacher(model_name_or_path=self.args.first_teacher_name_or_path, pooler=teacher_pooler)
         else:
-            first_pooler = ("cls_before_pooler" if ("simcse" in self.args.first_teacher_name_or_path or "diffcse" in self.args.first_teacher_name_or_path) else "avg")
+            first_pooler = self.args.pooler_first_teacher
             first_teacher = Teacher(model_name_or_path=self.args.first_teacher_name_or_path, pooler=first_pooler)
-            second_pooler = ("cls_before_pooler" if ("simcse" in self.args.second_teacher_name_or_path or "diffcse" in self.args.second_teacher_name_or_path) else "avg")
+            second_pooler = self.args.pooler_second_teacher
             second_teacher = Teacher(model_name_or_path=self.args.second_teacher_name_or_path, pooler=second_pooler)
 
         # Update the references
@@ -407,7 +320,18 @@ class CLTrainer(Trainer):
                 # We just need to begin an iteration to create the randomization of the sampler.
                 for _ in train_dataloader:
                     break
+
+        # scaler = torch.cuda.amp.GradScaler()
         for epoch in range(epochs_trained, num_train_epochs):
+            # train_sampler = RandomSampler(self.train_dataset)
+            # train_dataloader = DataLoader(
+            #     self.train_dataset,
+            #     sampler=train_sampler,
+            #     batch_size=512,
+            #     drop_last=True,
+            #     collate_fn=self.data_collator,
+            #     pin_memory=True,
+            # )
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
                 train_dataloader.sampler.set_epoch(epoch)
             epoch_iterator = train_dataloader
@@ -469,6 +393,8 @@ class CLTrainer(Trainer):
                         
                         cos = nn.CosineSimilarity(dim=-1)
                         teacher_top1_sim_pred = cos(z1T.unsqueeze(1), z2T.unsqueeze(0)) / self.args.tau2
+                        inputs["super_teacher"] = teacher_top1_sim_pred
+                        inputs["teacher_top1_sim_pred"] = teacher_top1_sim_pred
 
                     else:
                         # Weighted average of two teachers
@@ -489,12 +415,11 @@ class CLTrainer(Trainer):
                         first_teacher_top1_sim = cos(first_teacher_z1.unsqueeze(1), first_teacher_z2.unsqueeze(0)) / self.args.tau2
                         second_teacher_top1_sim = cos(second_teacher_z1.unsqueeze(1), second_teacher_z2.unsqueeze(0)) / self.args.tau2
                         teacher_top1_sim_pred = (self.args.alpha_ * first_teacher_top1_sim) + ((1.0 - self.args.alpha_) * second_teacher_top1_sim)
+                        inputs["teacher_top1_sim_pred"] = teacher_top1_sim_pred
+                        inputs["super_teacher"] = first_teacher_top1_sim
+                self.do_grad_scaling = True
 
-                    inputs["teacher_top1_sim_pred"] = teacher_top1_sim_pred
-                    inputs["super_teacher"] = first_teacher_top1_sim
-
-
-                if ((step + 1) % self.args.gradient_accumulation_steps != 0) and self.args.local_rank != -1:
+                if ((step + 1) % self.args.gradient_accumulation_steps != 0) and self.args.local_rank != -1: #False
                     # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
                     with model.no_sync():
                         tr_loss += self.training_step(model, inputs)
@@ -503,7 +428,7 @@ class CLTrainer(Trainer):
                 self._total_flos += self.floating_point_ops(inputs)
                 # wandb.log({"loss": self.training_step(model, inputs)})
 
-                if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
+                if (step + 1) % self.args.gradient_accumulation_steps == 0 or ( # True
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
                     steps_in_epoch <= self.args.gradient_accumulation_steps
                     and (step + 1) == steps_in_epoch

@@ -6,9 +6,19 @@ train_config = './configs/train.yml'
 eval_config = './configs/eval.yml'
 benchmark_config = './configs/benchmark.yml'
 
-test_path = r'./mydata/test/benchmark_id.csv'
-corpus_path = r'./mydata/test/corpus.json'
+test_path = r'./data/benchmark/benchmark_id.csv'
+corpus_path = r'./data/benchmark/corpus.json'
 output_path = r'./output'
+
+CLS_MAPPING = {
+    "VoVanPhuc/bge-base-vi": "cls",
+    "keepitreal/vietnamese-sbert": "cls", 
+    "VoVanPhuc/sup-SimCSE-VietNamese-phobert-base": "avg", 
+    "VoVanPhuc/unsup-SimCSE-VietNamese-phobert-base": "avg", 
+    "./runs/best_t10": "avg"
+}
+
+THRESHOLD_FALSE_NEGATIVE = 0.7 
 
 def load_config(file_path):
     with open(file_path, "r") as file:

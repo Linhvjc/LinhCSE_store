@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
+import random
 
 import transformers
 from transformers import RobertaTokenizer, AutoTokenizer, AutoModel
@@ -14,13 +15,19 @@ from transformers.file_utils import (
     add_start_docstrings_to_model_forward,
     replace_return_docstrings,
 )
+from transformers.trainer_utils import set_seed
 from transformers.modeling_outputs import SequenceClassifierOutput, BaseModelOutputWithPoolingAndCrossAttentions
-from constants import load_config, train_config
+from constants import load_config, train_config, THRESHOLD_FALSE_NEGATIVE
 
 args = load_config(train_config)
 teacher_name = args['model_args']['first_teacher_name_or_path']
 teacher_model = AutoModel.from_pretrained(teacher_name)
 teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_name)
+
+set_seed(53)
+# import wandb
+# wandb.init(project="tracking_teacher_disable",
+#               name=f"teacher_disable",)
 
 class MLPLayer(nn.Module):
     """
@@ -153,21 +160,55 @@ class Pooler(nn.Module):
 import math    
 import numpy as np
 
+
 def custom_cross_entropy(X, not_ignore):
     softmax = custom_softmax(X, not_ignore)
-    return -sum([math.log(i) for i in softmax])
+    log_softmax = torch.log(softmax)
+    return -torch.sum(log_softmax)
 
 def custom_softmax(X, not_ignore):
-    
-    result = []
-    for i in range(X.size()[0]):
-        target = X[i][i].item()
-        actual_arr = np.array(X[i][not_ignore[i]].detach().numpy())
-
-        exp_values = np.exp(actual_arr)
-        sum_exp_values = np.sum(exp_values)
-        result.append(np.exp(target)/sum_exp_values)
+    exp_x = torch.exp(X)
+    exp_x = exp_x*not_ignore
+    sum_exp = torch.sum(exp_x, dim=-1)
+    diagonal = torch.diag(exp_x)
+    result = diagonal/sum_exp
     return result
+
+def custom_cross_entropy_2(X, false_negative_mask):
+    exp_x = softmax_horizontal(X)
+    diagonal = torch.diag(exp_x)
+    
+    false_negative_exp = exp_x * false_negative_mask
+    false_negative_exp[false_negative_exp == 0] = 1
+    # false_negative_p = torch.prod(false_negative_exp, dim=-1)
+
+    # log_diagonal = torch.log(diagonal)
+    # log_false_negative = torch.log(false_negative_p) * 0.7
+
+    # return -(torch.sum(log_diagonal) + torch.sum(log_false_negative))
+    log_false_negative = torch.log(false_negative_exp) * 0.2
+    log_diagonal = torch.log(diagonal)
+    return -(torch.sum(log_diagonal) + torch.sum(log_false_negative))
+
+
+
+
+def custom_softmax_2(X, false_negative_mask):
+    exp_x = torch.exp(X)
+    sum_exp = torch.sum(exp_x, dim=-1)
+    diagonal = torch.diag(exp_x)
+
+    false_negative_exp = exp_x * false_negative_mask
+    sum_false_negative_exp = torch.sum(false_negative_exp, dim=-1)
+    sum_false_negative_exp = sum_false_negative_exp * 0.7
+    result = (diagonal + sum_false_negative_exp)/sum_exp
+
+def softmax_horizontal(X):
+    exp_tensor = torch.exp(X)
+    sum_exp = torch.sum(exp_tensor, dim=1, keepdim=True)
+    softmax_tensor = exp_tensor / sum_exp
+
+    return softmax_tensor
 
 
 
@@ -298,7 +339,9 @@ def cl_forward(cls,
     avg_teacher = False
     first_teacher = False
     infinity = False
-    custom_loss = True
+    custom_loss = False
+    take_false_negative = False
+    random_disbale = True
     
     cos_sim = cls.sim(z1.unsqueeze(1), z2.unsqueeze(0))
     cos_sim_ce = cls.sim_ce(z1.unsqueeze(1), z2.unsqueeze(0))
@@ -322,8 +365,8 @@ def cl_forward(cls,
     elif first_teacher:
         real_teacher_pred = super_teacher * cls.model_args['temp']
         positive_sentence = (real_teacher_pred <= 0.7).float()
-        positive_sentence[positive_sentence == 0] = -1000000
-        diag_tensor = torch.diag(torch.tensor([1000001] * positive_sentence.size()[0])).to(cls.device)
+        positive_sentence[positive_sentence == 0] = -1000
+        diag_tensor = torch.diag(torch.tensor([1001] * positive_sentence.size()[0])).to(cls.device)
         mark = positive_sentence + diag_tensor
         cos_sim = cos_sim * mark
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
@@ -341,11 +384,31 @@ def cl_forward(cls,
         real_teacher_pred = super_teacher * cls.model_args['temp']
         negative_sentence = (real_teacher_pred <= 0.7)
         diag_tensor = torch.diag(torch.tensor([True] * negative_sentence.size()[0])).to(cls.device)
-        mark = (negative_sentence + diag_tensor).cpu()
+        mark = (negative_sentence + diag_tensor).float()
+        disable_sentence = torch.sum(mark == 0)
+        # percent = round(disable_sentence.item()/mark.numel(), 2)
+        # wandb.log({"Disable": percent})
+        # print(mark.numel())
+        loss = custom_cross_entropy(cos_sim, mark)
+    
+    elif take_false_negative:
+        real_teacher_pred = super_teacher * cls.model_args['temp']
+        false_negative_mask = (real_teacher_pred >= THRESHOLD_FALSE_NEGATIVE).float().to(cls.device)
 
-        true_negative = [np.where(row)[0].tolist() for row in mark]
-        loss = custom_cross_entropy(cos_sim.cpu(), true_negative)
-        
+        ones = torch.ones(false_negative_mask.size()[0], false_negative_mask.size()[0]).to(cls.device)
+        diag_zero_tensor = ones - torch.eye(false_negative_mask.size()[0]).to(cls.device)
+        false_negative_mask = false_negative_mask * diag_zero_tensor
+
+        loss = custom_cross_entropy_2(cos_sim, false_negative_mask)
+        # print(loss)
+    elif random_disbale:
+        mark = torch.ones(batch_size, batch_size)
+        num_disable = int((batch_size * batch_size) * 0.65)
+        indices = random.sample(range(batch_size * batch_size), num_disable)
+        mark.view(-1)[indices] = 0
+        mark = mark.to(cls.device)
+        loss = custom_cross_entropy(cos_sim, mark)
+
     else:
         labels = torch.arange(cos_sim.size(0)).long().to(cls.device)
         loss = loss_fct(cos_sim, labels)
@@ -376,7 +439,7 @@ def cl_forward(cls,
 
     # L = L_infoNCE + L_consistency + L_distillation
     loss = loss + sd_loss + kd_loss
-    # loss = loss + kd_loss
+    # loss = loss + 0*kd_loss
 
     # Calculate loss for MLM
     if mlm_outputs is not None and mlm_labels is not None:
